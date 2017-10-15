@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+option java_package = "com.avaglir.blockchain.generated";
+option java_multiple_files = true;
+
+message UnitMessage {}
+
+message Block {
+    uint64 index = 1;
+    uint64 timestamp = 2;
+    repeated Transaction txns = 3;
+    fixed32 proof = 4;
+    fixed32 last_hash = 5;
+}
+
+message Transaction {
+    fixed32 sender = 1;
+    fixed32 recipient = 2;
+    double amount =  3;
+}
+
+message TransactionResponse {
+    enum Data {
+        ERR = 0;
+        OK = 1;
+
+        INSUFFICIENT_FUNDS = 2;
+    }
+
+    Data data = 1;
+}
+
+message BlockMinedResponse {
+    enum Data {
+        ERR = 0;
+        OK = 1;
+
+        WORK_MISMATCH = 2;
+    }
+
+    Data data = 1;
+}
+
+service Blockchain {
+    rpc NewTransaction (Transaction) returns (TransactionResponse);
+    rpc Blocks (UnitMessage) returns (stream Block);
+    rpc BlockMined (Block) returns (BlockMinedResponse);
+}
+
+message Node {
+    fixed64 id = 1;
+    fixed32 address = 2;
+    uint32 port = 3;
+}
+
+message RegisterResponse {
+    enum Data {
+        ERR = 0;
+        OK = 1;
+    }
+
+    Data data = 1;
+}
+
+message LookupResponse {
+    enum Error {
+        ERR_UNKNOWN = 0;
+        NOT_FOUND = 1;
+    }
+
+    oneof resp {
+        Error error = 1;
+        Node node = 2;
+    }
+}
+
+service Registry {
+    rpc Register (stream Node) returns (RegisterResponse);
+    rpc Lookup (UnitMessage) returns (LookupResponse);
+    rpc Heartbeat (UnitMessage) returns (UnitMessage);
+}
