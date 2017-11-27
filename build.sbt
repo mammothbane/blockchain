@@ -1,10 +1,52 @@
 import sbt.io.Using
 
-name := "blockchain"
+lazy val common = (project in file("."))
+  .settings(commonSettings: _*)
+  .settings(
+    name := "blockchain"
+  )
 
-version := "0.1"
+lazy val client = (project in file("client"))
+  .settings(commonSettings: _*)
+  .settings(
+    name := "blockchain-client"
+  )
+  .dependsOn(common)
 
-scalaVersion := "2.12.3"
+lazy val node = (project in file("node"))
+  .settings(commonSettings: _*)
+  .settings(
+    name := "blockchain-node"
+  )
+  .dependsOn(common)
+
+
+lazy val commonSettings = Seq(
+  version := "0.1",
+  scalaVersion := "2.12.3",
+  PB.protocOptions in Compile ++= Seq(
+    s"--plugin=protoc-gen-java_rpc=${grpcExePath.value.get}",
+    s"--java_rpc_out=${(sourceManaged in Compile).value.getAbsolutePath}"
+  ),
+
+  PB.targets in Compile := Seq(
+    PB.gens.java -> (sourceManaged in Compile).value
+  ),
+
+  libraryDependencies += "io.grpc" % "grpc-all" % grpcJavaVersion,
+
+  grpcExePath := xsbti.api.SafeLazyProxy {
+    val exe: File = (baseDirectory in ThisBuild).value / ".bin" / grpcExeFileName
+    if (!exe.exists) {
+      println("grpc protoc plugin (for Java) does not exist. Downloading.")
+      Using.urlInputStream(grpcExeUrl) { stream => IO.transfer(stream, exe) }
+      exe.setExecutable(true)
+    } else {
+      println("grpc protoc plugin (for Java) exists.")
+    }
+    exe
+  }
+)
 
 def grpcExeFileName = {
   val os = if (scala.util.Properties.isMac){
@@ -25,26 +67,3 @@ val grpcExeUrl =
   url(s"http://repo1.maven.org/maven2/io/grpc/$grpcArtifactId/$grpcJavaVersion/$grpcExeFileName")
 
 val grpcExePath = SettingKey[xsbti.api.Lazy[File]]("grpcExePath")
-
-grpcExePath := xsbti.api.SafeLazyProxy {
-  val exe: File = (baseDirectory in ThisBuild).value / ".bin" / grpcExeFileName
-  if (!exe.exists) {
-    println("grpc protoc plugin (for Java) does not exist. Downloading.")
-    Using.urlInputStream(grpcExeUrl) { stream => IO.transfer(stream, exe) }
-    exe.setExecutable(true)
-  } else {
-    println("grpc protoc plugin (for Java) exists.")
-  }
-  exe
-}
-
-PB.protocOptions in Compile ++= Seq(
-  s"--plugin=protoc-gen-java_rpc=${grpcExePath.value.get}",
-  s"--java_rpc_out=${(sourceManaged in Compile).value.getAbsolutePath}"
-)
-
-PB.targets in Compile := Seq(
-  PB.gens.java -> (sourceManaged in Compile).value
-)
-
-libraryDependencies += "io.grpc" % "grpc-all" % grpcJavaVersion
