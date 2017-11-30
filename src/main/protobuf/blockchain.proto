@@ -14,9 +14,10 @@ message Block {
 }
 
 message Transaction {
-    fixed32 sender = 1;
-    fixed32 recipient = 2;
-    double amount =  3;
+    bytes sender = 1;
+    bytes recipient = 2;
+    double amount = 3;
+    bytes signature = 4;
 }
 
 message TransactionResponse {
@@ -25,6 +26,7 @@ message TransactionResponse {
         OK = 1;
 
         INSUFFICIENT_FUNDS = 2;
+        INVALID_SIGNATURE = 3;
     }
 
     Data data = 1;

@@ -1,11 +1,9 @@
 package com.avaglir.blockchain.node
 
+import com.avaglir.blockchain._
 import io.grpc.ServerBuilder
 
 object Main {
-  val port = 9148
-
-
   def main(args: Array[String]): Unit = {
     val builder = ServerBuilder.forPort(port)
 
@@ -14,12 +12,9 @@ object Main {
 
     val server = builder.build()
 
-    server.start()
-
-
-
-
-    server.awaitTermination()
+    server
+      .start()
+      .awaitTermination()
   }
 
 }

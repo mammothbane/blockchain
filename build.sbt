@@ -9,7 +9,9 @@ lazy val common = (project in file("."))
 lazy val client = (project in file("client"))
   .settings(commonSettings: _*)
   .settings(
-    name := "blockchain-client"
+    name := "blockchain-client",
+    libraryDependencies ++= Seq(
+    )
   )
   .dependsOn(common)
 
@@ -33,7 +35,10 @@ lazy val commonSettings = Seq(
     PB.gens.java -> (sourceManaged in Compile).value
   ),
 
-  libraryDependencies += "io.grpc" % "grpc-all" % grpcJavaVersion,
+  libraryDependencies ++= Seq(
+    "io.grpc" % "grpc-all" % grpcJavaVersion,
+    "org.mortbay.jetty.alpn" % "alpn-boot" % "8.1.9.v20160720" % "runtime"
+  ),
 
   grpcExePath := xsbti.api.SafeLazyProxy {
     val exe: File = (baseDirectory in ThisBuild).value / ".bin" / grpcExeFileName
@@ -45,7 +50,14 @@ lazy val commonSettings = Seq(
       println("grpc protoc plugin (for Java) exists.")
     }
     exe
-  }
+  },
+
+  fork := true,
+  javaOptions ++= (managedClasspath in Runtime).map { attList =>
+    attList
+      .map { _.data.getAbsolutePath }
+      .collect { case x if x contains "jetty.alpn" => s"-Xbootclasspath/p:$x"}
+  }.value
 )
 
 def grpcExeFileName = {
