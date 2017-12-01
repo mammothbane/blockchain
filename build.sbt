@@ -37,6 +37,7 @@ lazy val commonSettings = Seq(
 
   libraryDependencies ++= Seq(
     "io.grpc" % "grpc-all" % grpcJavaVersion,
+    "com.github.scopt" %% "scopt" % "3.7.0",
     "org.mortbay.jetty.alpn" % "alpn-boot" % "8.1.9.v20160720" % "runtime"
   ),
 

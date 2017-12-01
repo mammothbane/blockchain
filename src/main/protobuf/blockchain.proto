@@ -32,6 +32,18 @@ message TransactionResponse {
     Data data = 1;
 }
 
+message BlockLookupResponse {
+    enum Data {
+        ERR = 0;
+        OK = 1;
+
+        BLOCK_NOT_FOUND = 2;
+    }
+
+    Data data = 1;
+    Block block = 2;
+}
+
 message BlockMinedResponse {
     enum Data {
         ERR = 0;
@@ -43,10 +55,16 @@ message BlockMinedResponse {
     Data data = 1;
 }
 
+service Client {
+    rpc SubmitTransaction (Transaction) returns (TransactionResponse);
+}
+
 service Blockchain {
-    rpc NewTransaction (Transaction) returns (TransactionResponse);
-    rpc Blocks (UnitMessage) returns (stream Block);
-    rpc BlockMined (Block) returns (BlockMinedResponse);
+    rpc LastBlock   (UnitMessage)   returns (Block);
+    rpc AllBlocks   (UnitMessage)   returns (stream Block);
+    rpc Ancestor    (Block)         returns (BlockLookupResponse);
+
+    rpc BlockMined  (Block)         returns (BlockMinedResponse);
 }
 
 message Node {
@@ -55,29 +73,8 @@ message Node {
     uint32 port = 3;
 }
 
-message RegisterResponse {
-    enum Data {
-        ERR = 0;
-        OK = 1;
-    }
-
-    Data data = 1;
-}
-
-message LookupResponse {
-    enum Error {
-        ERR_UNKNOWN = 0;
-        NOT_FOUND = 1;
-    }
-
-    oneof resp {
-        Error error = 1;
-        Node node = 2;
-    }
-}
-
 service Registry {
-    rpc Register (stream Node) returns (RegisterResponse);
-    rpc Lookup (UnitMessage) returns (LookupResponse);
-    rpc Heartbeat (UnitMessage) returns (UnitMessage);
+    rpc Join        (Node)          returns (UnitMessage);
+    rpc Leave       (Node)          returns (UnitMessage);
+    rpc Heartbeat   (UnitMessage)   returns (UnitMessage);
 }
