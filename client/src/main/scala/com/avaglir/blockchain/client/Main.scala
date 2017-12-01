@@ -4,7 +4,7 @@ import java.security.{KeyPair, KeyPairGenerator}
 
 import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated.TransactionResponse.Data
-import com.avaglir.blockchain.generated.{BlockchainGrpc, Transaction}
+import com.avaglir.blockchain.generated.{ClientGrpc, Transaction}
 import com.google.protobuf.ByteString
 import io.grpc.ManagedChannelBuilder
 
@@ -36,9 +36,9 @@ object Main {
       .usePlaintext(true)
       .build()
 
-    val blockingStub = BlockchainGrpc.newBlockingStub(channel)
+    val clientStub = ClientGrpc.newBlockingStub(channel)
 
-    val resp = blockingStub.newTransaction(txn)
+    val resp = clientStub.submitTransaction(txn)
     resp.getData match {
       case Data.OK =>
         println("got ok!")

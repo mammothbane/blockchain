@@ -3,7 +3,7 @@ package com.avaglir.blockchain.node
 import com.avaglir.blockchain.generated._
 import io.grpc.stub.StreamObserver
 
-class RegistryService extends RegistryGrpc.RegistryImplBase {
+object RegistryService extends RegistryGrpc.RegistryImplBase {
   val joinImpl: (Node) => UnitMessage = (_: Node) => UnitMessage.getDefaultInstance
   override def join(request: Node, responseObserver: StreamObserver[UnitMessage]): Unit = joinImpl.asJava(request, responseObserver)
 

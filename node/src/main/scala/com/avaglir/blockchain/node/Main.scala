@@ -4,11 +4,13 @@ import com.avaglir.blockchain._
 import io.grpc.ServerBuilder
 
 object Main {
+
   def main(args: Array[String]): Unit = {
     val builder = ServerBuilder.forPort(port)
 
-    builder.addService(new BlockchainService)
-    builder.addService(new RegistryService)
+    builder.addService(BlockchainService)
+    builder.addService(RegistryService)
+    builder.addService(ClientService)
 
     val server = builder.build()
 
