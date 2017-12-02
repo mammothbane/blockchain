@@ -5,14 +5,19 @@ import java.nio.ByteBuffer
 import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
+import ch.qos.logback.classic.{Level, Logger => CLogger}
 import com.avaglir.blockchain.generated.Node
 import io.grpc.ServerBuilder
+import org.slf4j.{Logger, LoggerFactory}
 
 object Main {
   val startEpochMillis: Long = Instant.now.toEpochMilli
   var config: Config = _
 
   def main(args: Array[String]): Unit = {
+    LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME).asInstanceOf[CLogger].setLevel(Level.DEBUG)
+    LoggerFactory.getLogger("io.netty").asInstanceOf[CLogger].setLevel(Level.INFO)
+
     config = Config.parse(args).getOrElse {
       sys.exit(1)
     }
@@ -28,7 +33,7 @@ object Main {
 
 
     nodes ++= config.nodeSet.par.map { node =>
-      val out = new Node.Builder
+      val out = Node.newBuilder
       out.setPort(node.getPort)
 
       val addr = InetAddress.getByName(node.getHost).getAddress

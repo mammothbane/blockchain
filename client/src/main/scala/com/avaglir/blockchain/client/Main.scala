@@ -4,7 +4,7 @@ import java.security.{KeyPair, KeyPairGenerator}
 
 import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated.TransactionResponse.Data
-import com.avaglir.blockchain.generated.{ClientGrpc, Transaction}
+import com.avaglir.blockchain.generated.{ClientGrpc, RegistryGrpc, Transaction, UnitMessage}
 import com.google.protobuf.ByteString
 import io.grpc.ManagedChannelBuilder
 
@@ -46,5 +46,11 @@ object Main {
         println("help")
         sys.exit(1)
     }
+
+    val regStub = RegistryGrpc.newBlockingStub(channel)
+
+    regStub.heartbeat(UnitMessage.getDefaultInstance)
+    val info = regStub.info(UnitMessage.getDefaultInstance)
+    println(s"got info $info")
   }
 }

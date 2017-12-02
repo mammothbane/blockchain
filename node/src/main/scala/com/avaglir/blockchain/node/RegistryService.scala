@@ -1,12 +1,12 @@
 package com.avaglir.blockchain.node
 
 import com.avaglir.blockchain.generated._
+import com.typesafe.scalalogging.LazyLogging
 import io.grpc.stub.StreamObserver
-import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.mutable
 
-object RegistryService extends RegistryGrpc.RegistryImplBase with Logging {
+object RegistryService extends RegistryGrpc.RegistryImplBase with LazyLogging {
   val joinImpl: (Node) => UnitMessage = (node: Node) => {
     nodes.synchronized {
       if (!(nodes contains node.hash) || !nodes(node.hash).hasInfo) {

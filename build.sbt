@@ -38,10 +38,9 @@ lazy val commonSettings = Seq(
   libraryDependencies ++= Seq(
     "io.grpc" % "grpc-all" % grpcJavaVersion,
     "com.github.scopt" %% "scopt" % "3.7.0",
-    "org.apache.logging.log4j" % "log4j-api" % "2.9.1",
-    "org.apache.logging.log4j" % "log4j-core" % "2.9.1" % Runtime,
-    "org.apache.logging.log4j" %% "log4j-api-scala" % "11.0",
-    "org.mortbay.jetty.alpn" % "alpn-boot" % "8.1.9.v20160720" % "runtime"
+    "com.typesafe.scala-logging" %% "scala-logging" % "3.7.2",
+    "ch.qos.logback" % "logback-classic" % "1.2.3",
+    "org.mortbay.jetty.alpn" % "alpn-boot" % "8.1.9.v20160720" % Runtime
   ),
 
   grpcExePath := xsbti.api.SafeLazyProxy {

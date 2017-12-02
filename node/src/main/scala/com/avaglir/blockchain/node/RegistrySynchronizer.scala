@@ -3,26 +3,25 @@ package com.avaglir.blockchain.node
 import java.util.concurrent.{TimeUnit, TimeoutException}
 
 import com.avaglir.blockchain.generated.UnitMessage
-import org.apache.logging.log4j.scala.Logging
+import com.typesafe.scalalogging.LazyLogging
 
-import scala.util.{Failure, Try}
-
-object RegistrySynchronizer extends BgService with Logging {
+object RegistrySynchronizer extends BgService with LazyLogging {
   val heartbeatTimeoutSec = 1
-  val nodeExpirationInterval = 3
+  val nodeExpirationSec = 30
 
-  var index = 0
+
 
   override def run(): Unit = {
     logger.debug("running heartbeat")
 
-    val badNodes = nodes.par.map { node =>
+    val badNodes = nodes.values.par.map { node =>
       node.registryFutureStub.heartbeat(UnitMessage.getDefaultInstance)
     }.filter { fut =>
-      Try { fut.get(heartbeatTimeoutSec, TimeUnit.SECONDS) } match {
-        case _: Failure[TimeoutException] => true
-        case Failure(e) => throw e
-        case _ => false
+      try {
+        fut.get(heartbeatTimeoutSec, TimeUnit.SECONDS)
+        false
+      } catch {
+        case _: TimeoutException => true
       }
     }.seq
 

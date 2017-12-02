@@ -12,7 +12,7 @@ case class Config(
                  mine: Boolean = false,
                  fastStart: Boolean = false,
                  nodeSet: Set[URL] = Set.empty,
-                 name: String = Random.nextString(8)
+                 name: String = (0 until 8).map { _ => Random.nextPrintableChar() }.mkString
                  )
 
 object Config {
