@@ -70,13 +70,21 @@ service Blockchain {
 }
 
 message Node {
-    fixed64 id = 1;
-    fixed32 address = 2;
-    uint32 port = 3;
+    fixed32 address = 1;
+    uint32 port = 2;
+    fixed64 hash = 3;
+
+    message NodeInfo {
+        string name = 1;
+        uint64 uptime = 2;  // epoch millis
+    }
+
+    NodeInfo info = 4;
 }
 
 service Registry {
     rpc Join        (Node)          returns (UnitMessage);
     rpc Leave       (Node)          returns (UnitMessage);
     rpc Heartbeat   (UnitMessage)   returns (UnitMessage);
+    rpc Info        (Node)          returns (Node.NodeInfo);
 }

@@ -10,7 +10,7 @@ import com.avaglir.blockchain.generated.Transaction
 
 package object blockchain {
   val keylen = 512
-  val port = 9148
+  val defaultPort = 9148
 
   private def preSigned(amount: Double, sender: Array[Byte], recipient: Array[Byte]): Array[Byte] = {
     val ret = Array.fill[Byte](8 + sender.length + recipient.length)(0)

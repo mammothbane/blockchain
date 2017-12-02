@@ -32,7 +32,7 @@ object Main {
       .build()
 
     val channel = ManagedChannelBuilder
-      .forAddress("localhost", port)
+      .forAddress("localhost", defaultPort)
       .usePlaintext(true)
       .build()
 

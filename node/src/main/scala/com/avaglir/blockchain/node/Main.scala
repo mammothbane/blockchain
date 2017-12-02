@@ -1,22 +1,52 @@
 package com.avaglir.blockchain.node
 
-import com.avaglir.blockchain._
+import java.net.InetAddress
+import java.nio.ByteBuffer
+import java.util.concurrent.{Executors, TimeUnit}
+
+import com.avaglir.blockchain.generated.Node
 import io.grpc.ServerBuilder
 
 object Main {
 
   def main(args: Array[String]): Unit = {
-    val builder = ServerBuilder.forPort(port)
+    val config = Config.parse(args).getOrElse {
+      sys.exit(1)
+    }
+
+    val builder = ServerBuilder.forPort(config.port)
 
     builder.addService(BlockchainService)
     builder.addService(RegistryService)
     builder.addService(ClientService)
 
     val server = builder.build()
+    server.start()
 
-    server
-      .start()
-      .awaitTermination()
+
+    nodes ++= config.nodeSet.par.map { node =>
+      val out = new Node.Builder
+      out.setPort(node.getPort)
+
+      val addr = InetAddress.getByName(node.getHost).getAddress
+      if (addr.length != 4) throw new IllegalArgumentException(s"address $addr did not resolve to a valid IPv4 address")
+
+      out.setAddress(ByteBuffer.wrap(addr).getInt())
+      out.build
+    }.seq
+
+    val services =
+      List(RegistrySynchronizer, BlockSynchronizer) ++ (if (config.mine) BlockMiner :: Nil else Nil)
+
+    val execs = services.map { sync =>
+      val exec = Executors.newSingleThreadScheduledExecutor()
+      exec.scheduleAtFixedRate(sync, 0, sync.interval.toMillis, TimeUnit.MILLISECONDS)
+      exec
+    }
+
+    server.awaitTermination()
+
+    execs.par.foreach { exec => exec.shutdown() }
+    execs.par.foreach { exec => exec.awaitTermination(2, TimeUnit.SECONDS) }
   }
-
 }
