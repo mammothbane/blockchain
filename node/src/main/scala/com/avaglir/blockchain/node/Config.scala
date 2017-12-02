@@ -5,11 +5,14 @@ import java.net.URL
 import com.avaglir.blockchain._
 import scopt.OptionParser
 
+import scala.util.Random
+
 case class Config(
                  port: Int = defaultPort,
                  mine: Boolean = false,
                  fastStart: Boolean = false,
-                 nodeSet: Set[URL] = Set.empty
+                 nodeSet: Set[URL] = Set.empty,
+                 name: String = Random.nextString(8)
                  )
 
 object Config {
@@ -24,10 +27,14 @@ object Config {
         .text("enable mining")
 
       opt[Unit]('f', "fast_start")
-        .action{ (_, c) => c.copy(fastStart = true) }
+        .action { (_, c) => c.copy(fastStart = true) }
         .text("enable fast start (don't copy entire blockchain)")
 
-      opt[Seq[String]]('n', "nodes")
+      opt[String]('n', "name")
+        .action { (x, c) => c.copy(name = x) }
+        .text("")
+
+      opt[Seq[String]]("nodes")
         .action { (x, c) => c.copy(nodeSet = x.map { new URL(_) }.toSet) }
         .text("addresses (comma-separated) of initial nodes to start with")
 

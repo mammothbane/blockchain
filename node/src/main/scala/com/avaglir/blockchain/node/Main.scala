@@ -2,15 +2,18 @@ package com.avaglir.blockchain.node
 
 import java.net.InetAddress
 import java.nio.ByteBuffer
+import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.avaglir.blockchain.generated.Node
 import io.grpc.ServerBuilder
 
 object Main {
+  val startEpochMillis: Long = Instant.now.toEpochMilli
+  var config: Config = _
 
   def main(args: Array[String]): Unit = {
-    val config = Config.parse(args).getOrElse {
+    config = Config.parse(args).getOrElse {
       sys.exit(1)
     }
 
@@ -32,7 +35,8 @@ object Main {
       if (addr.length != 4) throw new IllegalArgumentException(s"address $addr did not resolve to a valid IPv4 address")
 
       out.setAddress(ByteBuffer.wrap(addr).getInt())
-      out.build
+      val ret = out.build
+      ret.hash -> ret
     }.seq
 
     val services =
@@ -43,6 +47,7 @@ object Main {
       exec.scheduleAtFixedRate(sync, 0, sync.interval.toMillis, TimeUnit.MILLISECONDS)
       exec
     }
+
 
     server.awaitTermination()
 
