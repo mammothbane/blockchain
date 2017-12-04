@@ -6,8 +6,13 @@ import java.security.{KeyFactory, MessageDigest, PrivateKey}
 import java.util
 import javax.crypto.Cipher
 
+import ch.qos.logback.classic.encoder.PatternLayoutEncoder
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.classic.{Level, Logger => CLogger}
+import ch.qos.logback.core.ConsoleAppender
 import com.avaglir.blockchain.generated.Transaction
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.concurrent.{Future, Promise}
 
@@ -67,5 +72,26 @@ package object blockchain {
       })
       p.future
     }
+  }
+
+  def configLogger(): Unit = {
+    val rootLogger = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME).asInstanceOf[CLogger]
+    rootLogger.detachAndStopAllAppenders()
+    rootLogger.setLevel(Level.INFO)
+
+    LoggerFactory.getLogger("com.avaglir").asInstanceOf[CLogger].setLevel(Level.DEBUG)
+
+    val enc = new PatternLayoutEncoder
+    enc.setContext(rootLogger.getLoggerContext)
+    enc.setPattern("%highlight(%-5level) %white(%-23class{0}) %message%n")
+    enc.start()
+
+    val appender = new ConsoleAppender[ILoggingEvent]
+    appender.setContext(rootLogger.getLoggerContext)
+    appender.setEncoder(enc)
+    appender.setWithJansi(true)
+    appender.start()
+
+    rootLogger.addAppender(appender)
   }
 }

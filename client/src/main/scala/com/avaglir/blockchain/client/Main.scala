@@ -6,9 +6,10 @@ import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated.TransactionResponse.Data
 import com.avaglir.blockchain.generated.{ClientGrpc, RegistryGrpc, Transaction, UnitMessage}
 import com.google.protobuf.ByteString
+import com.typesafe.scalalogging.LazyLogging
 import io.grpc.ManagedChannelBuilder
 
-object Main {
+object Main extends LazyLogging {
   val keyGen: KeyPairGenerator = {
     val out = KeyPairGenerator.getInstance("RSA")
     out.initialize(keylen)
@@ -20,6 +21,12 @@ object Main {
   val publicKey: Array[Byte] = keyPair.getPublic.getEncoded
 
   def main(args: Array[String]): Unit = {
+    configLogger()
+
+    val config = Config.parse(args).getOrElse {
+      sys.exit(1)
+    }
+
     val amount = 1.2f
 
     val recipient = Array.fill[Byte](0)(0)
@@ -32,7 +39,7 @@ object Main {
       .build()
 
     val channel = ManagedChannelBuilder
-      .forAddress("localhost", defaultPort)
+      .forAddress(config.host, config.port)
       .usePlaintext(true)
       .build()
 
@@ -41,9 +48,9 @@ object Main {
     val resp = clientStub.submitTransaction(txn)
     resp.getData match {
       case Data.OK =>
-        println("got ok!")
+        logger.info("got ok!")
       case _ =>
-        println("help")
+        logger.error("help")
         sys.exit(1)
     }
 
@@ -51,6 +58,6 @@ object Main {
 
     regStub.heartbeat(UnitMessage.getDefaultInstance)
     val info = regStub.info(UnitMessage.getDefaultInstance)
-    println(s"got info $info")
+    logger.info(s"got node info $info")
   }
 }
