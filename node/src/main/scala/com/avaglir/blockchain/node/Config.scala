@@ -1,6 +1,6 @@
 package com.avaglir.blockchain.node
 
-import java.net.URL
+import java.net.{InetAddress, URL}
 
 import com.avaglir.blockchain._
 import scopt.OptionParser
@@ -9,6 +9,7 @@ import scala.util.Random
 
 case class Config(
                  port: Int = defaultPort,
+                 bind: InetAddress = InetAddress.getByName("localhost"),
                  mine: Boolean = false,
                  fastStart: Boolean = false,
                  nodeSet: Set[URL] = Set.empty,
@@ -23,12 +24,16 @@ object Config {
         .text("port to listen on")
 
       opt[Unit]('m', "mine")
-        .action { (_, c) => c.copy(mine = false) }
+        .action { (_, c) => c.copy(mine = true) }
         .text("enable mining")
 
       opt[Unit]('f', "fast_start")
         .action { (_, c) => c.copy(fastStart = true) }
         .text("enable fast start (don't copy entire blockchain)")
+
+      opt[String]('b', "bind")
+        .action { (x, c) => c.copy(bind = InetAddress.getByName(x)) }
+        .text("ip address to bind to")
 
       opt[String]('n', "name")
         .action { (x, c) => c.copy(name = x) }

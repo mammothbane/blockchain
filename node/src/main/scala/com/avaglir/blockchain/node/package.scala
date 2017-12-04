@@ -15,6 +15,21 @@ package object node {
   val blockchain = mutable.Seq.empty[Block]
   val nodes = mutable.Map.empty[Int, Node]
 
+  val selfNode: Node = {
+    val addr = ByteBuffer.wrap(Main.config.bind.getAddress).getInt
+
+    val info = Node.NodeInfo.newBuilder
+      .setName(Main.config.name)
+      .setUpSince(Main.startEpochMillis)
+      .build
+
+    Node.newBuilder
+      .setAddress(addr)
+      .setPort(Main.config.port)
+      .setInfo(info)
+      .build
+  }
+
   implicit class nodeExt(t: Node) {
     // TODO: look at caching this
     def channel: Channel = ManagedChannelBuilder
@@ -27,7 +42,9 @@ package object node {
       addr.map { x => s"${ x.toInt & 0xff }" }.mkString(".")
     }
 
-    override def toString: String = if (t.hasInfo) s"${t.getInfo.getName}@${t.addrString}:${t.getPort}" else s"${t.addrString}:${t.getPort}"
+    def pretty: String =
+      if (t.hasInfo)  s"Node(${t.getInfo.getName}@${t.addrString}:${t.getPort})"
+      else            s"Node(${t.addrString}:${t.getPort})"
 
     lazy val hash: Int = {
       val buf = ByteBuffer.allocate(8)

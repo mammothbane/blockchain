@@ -55,6 +55,7 @@ lazy val commonSettings = Seq(
     exe
   },
 
+  cancelable in Global := true,
   fork := true,
   javaOptions ++= (managedClasspath in Runtime).map { attList =>
     attList
