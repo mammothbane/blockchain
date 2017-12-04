@@ -1,12 +1,10 @@
 package com.avaglir.blockchain.node
 
-import java.util.concurrent.{TimeUnit, TimeoutException}
-
 import com.avaglir.blockchain.generated.UnitMessage
 import com.avaglir.blockchain._
 import com.typesafe.scalalogging.LazyLogging
 
-import scala.concurrent.Future
+import scala.concurrent._
 
 object RegistrySynchronizer extends BgService with LazyLogging {
   val heartbeatTimeoutSec = 1
@@ -29,8 +27,10 @@ object RegistrySynchronizer extends BgService with LazyLogging {
       } else {
         logger.info(s"bad nodes: ${badNodes.mkString(", ")}")
 
-        nodes.synchronized {
-          nodes --= badNodes.map { _.hash }
+        blocking {
+          nodes.synchronized {
+            nodes --= badNodes.map { _.hash }
+          }
         }
       }
     }
