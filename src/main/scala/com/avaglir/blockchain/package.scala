@@ -7,6 +7,9 @@ import java.util
 import javax.crypto.Cipher
 
 import com.avaglir.blockchain.generated.Transaction
+import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
+
+import scala.concurrent.{Future, Promise}
 
 package object blockchain {
   val keylen = 512
@@ -52,5 +55,17 @@ package object blockchain {
   implicit class byteArrayHexString(b: Array[Byte]) {
     def hexString: String = b.map { _.hexString }.mkString
     override def toString: String = hexString
+  }
+
+  // borrowed from https://stackoverflow.com/questions/18026601/listenablefuture-to-scala-future
+  implicit class RichListenableFuture[T](lf: ListenableFuture[T]) {
+    def asScala: Future[T] = {
+      val p = Promise[T]()
+      Futures.addCallback(lf, new FutureCallback[T] {
+        def onFailure(t: Throwable): Unit = p failure t
+        def onSuccess(result: T): Unit    = p success result
+      })
+      p.future
+    }
   }
 }
