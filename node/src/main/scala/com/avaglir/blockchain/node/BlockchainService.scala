@@ -3,7 +3,7 @@ package com.avaglir.blockchain.node
 import com.avaglir.blockchain.generated._
 import io.grpc.stub.StreamObserver
 
-object BlockchainService extends BlockchainGrpc.BlockchainImplBase {
+class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase {
   val blockMined: Block => BlockMinedResponse = _ => BlockMinedResponse.newBuilder.build
 
   override def blockMined(request: Block, responseObserver: StreamObserver[BlockMinedResponse]): Unit = blockMined.asJava(request, responseObserver)

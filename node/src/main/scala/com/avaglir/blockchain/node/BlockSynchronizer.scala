@@ -1,6 +1,6 @@
 package com.avaglir.blockchain.node
 
-object BlockSynchronizer extends BgService {
+class BlockSynchronizer(snode: SNode) extends BgService {
   override def run(): Unit = {
 
   }

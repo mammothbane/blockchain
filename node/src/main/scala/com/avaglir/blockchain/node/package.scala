@@ -7,29 +7,9 @@ import com.avaglir.blockchain.generated._
 import io.grpc.stub.StreamObserver
 import io.grpc.{Channel, ManagedChannelBuilder}
 
-import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
 package object node {
-  val pendingTransactions = mutable.Map.empty[Array[Byte], Transaction]
-  val blockchain = mutable.Seq.empty[Block]
-  val nodes = mutable.Map.empty[Int, Node]
-
-  val selfNode: Node = {
-    val addr = ByteBuffer.wrap(Main.config.bind.getAddress).getInt
-
-    val info = Node.NodeInfo.newBuilder
-      .setName(Main.config.name)
-      .setUpSince(Main.startEpochMillis)
-      .build
-
-    Node.newBuilder
-      .setAddress(addr)
-      .setPort(Main.config.port)
-      .setInfo(info)
-      .build
-  }
-
   implicit class nodeExt(t: Node) {
     // TODO: look at caching this
     def channel: Channel = ManagedChannelBuilder

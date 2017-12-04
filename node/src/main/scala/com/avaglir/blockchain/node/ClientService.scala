@@ -4,10 +4,10 @@ import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated.{ClientGrpc, Transaction, TransactionResponse}
 import io.grpc.stub.StreamObserver
 
-object ClientService extends ClientGrpc.ClientImplBase {
-
+class ClientService(val snode: SNode) extends ClientGrpc.ClientImplBase {
   def submitImpl(tx: Transaction): TransactionResponse = {
     import TransactionResponse.Data._
+    import snode._
 
     val resp = TransactionResponse.newBuilder
 

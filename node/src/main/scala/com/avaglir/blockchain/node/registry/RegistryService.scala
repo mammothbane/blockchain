@@ -1,21 +1,24 @@
-package com.avaglir.blockchain.node
+package com.avaglir.blockchain.node.registry
 
 import java.time.{Duration, Instant}
 
 import com.avaglir.blockchain.generated._
+import com.avaglir.blockchain.node._
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.stub.StreamObserver
 
 import scala.collection.mutable
 import scala.concurrent.blocking
 
-object RegistryService extends RegistryGrpc.RegistryImplBase with LazyLogging {
+class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with LazyLogging {
+  import snode._
+
   def joinImpl(node: Node): UnitMessage = {
     logger.debug("<- join")
 
     if (node.hash == selfNode.hash) return UnitMessage.getDefaultInstance
 
-    RegistrySynchronizer.lastHeartbeats(node.hash) = Instant.now
+    registrySynchronizer.lastHeartbeats(node.hash) = Instant.now
     nodes.synchronized {
       if (!(nodes contains node.hash) || !nodes(node.hash).hasInfo) {
         nodes(node.hash) = node
@@ -43,8 +46,8 @@ object RegistryService extends RegistryGrpc.RegistryImplBase with LazyLogging {
     logger.debug("<- info")
     Node.NodeInfo
       .newBuilder
-      .setName(Main.config.name)
-      .setUpSince(Main.startEpochMillis)
+      .setName(config.name)
+      .setUpSince(startEpochMillis)
       .build
   }
 
@@ -62,8 +65,8 @@ object RegistryService extends RegistryGrpc.RegistryImplBase with LazyLogging {
               node.hash != selfNode.hash &&
                 (!nodes.contains(node.hash) || !nodes(node.hash).hasInfo) &&
                 { // ignore nodes that have timed out
-                  val diff = Duration.between(RegistrySynchronizer.lastHeartbeats.getOrElse(node.hash, Instant.now), Instant.now)
-                  diff.compareTo(Duration.ofSeconds(RegistrySynchronizer.nodeExpirationSec)) <= 0
+                  val diff = Duration.between(registrySynchronizer.lastHeartbeats.getOrElse(node.hash, Instant.now), Instant.now)
+                  diff.compareTo(Duration.ofSeconds(registrySynchronizer.nodeExpirationSec)) <= 0
                 }
             }
             .foreach { node => nodes(node.hash) = node }

@@ -1,4 +1,4 @@
-package com.avaglir.blockchain.node
+package com.avaglir.blockchain.node.registry
 
 import java.time.temporal.ChronoUnit
 import java.time.{Instant, Duration => JDuration}
@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit
 
 import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated.{Node, UnitMessage}
+import com.avaglir.blockchain.node._
 import com.typesafe.scalalogging.LazyLogging
 
 import scala.collection.mutable
@@ -13,7 +14,9 @@ import scala.concurrent._
 import scala.concurrent.duration.Duration
 import scala.util.Success
 
-object RegistrySynchronizer extends BgService with LazyLogging {
+class RegistrySynchronizer(snode: SNode) extends BgService with LazyLogging {
+  import snode._
+
   val heartbeatTimeoutSec = 1
   val nodeExpirationSec = 30
 
@@ -86,7 +89,7 @@ object RegistrySynchronizer extends BgService with LazyLogging {
       val exchanges = nodes.values.par.map { node =>
         val p = Promise[Unit]()
 
-        val obs = node.registryStub.exchange(RegistryService.exchangeObserver({ () => p.complete(Success(Unit)) }, p.failure))
+        val obs = node.registryStub.exchange(registryService.exchangeObserver({ () => p.complete(Success(Unit)) }, p.failure))
         (nodes.values.toSeq :+ selfNode).foreach { obs.onNext }
         obs.onCompleted()
 

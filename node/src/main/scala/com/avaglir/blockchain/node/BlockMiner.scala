@@ -2,7 +2,7 @@ package com.avaglir.blockchain.node
 
 import java.time.Duration
 
-object BlockMiner extends BgService {
+class BlockMiner(node: SNode) extends BgService {
   // run continuously
   override val interval: Duration = Duration.ZERO
 
