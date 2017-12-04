@@ -19,12 +19,13 @@ object Main extends LazyLogging {
 
     val enc = new PatternLayoutEncoder
     enc.setContext(rootLogger.getLoggerContext)
-    enc.setPattern("%-5level %-23class{0} %message%n")
+    enc.setPattern("%highlight(%-5level) %white(%-23class{0}) %message%n")
     enc.start()
 
     val appender = new ConsoleAppender[ILoggingEvent]
     appender.setContext(rootLogger.getLoggerContext)
     appender.setEncoder(enc)
+    appender.setWithJansi(true)
     appender.start()
 
     rootLogger.addAppender(appender)

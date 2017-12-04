@@ -40,7 +40,8 @@ lazy val commonSettings = Seq(
     "com.github.scopt" %% "scopt" % "3.7.0",
     "com.typesafe.scala-logging" %% "scala-logging" % "3.7.2",
     "ch.qos.logback" % "logback-classic" % "1.2.3",
-    "org.mortbay.jetty.alpn" % "alpn-boot" % "8.1.9.v20160720" % Runtime
+    "org.mortbay.jetty.alpn" % "alpn-boot" % "8.1.9.v20160720" % Runtime,
+    "org.fusesource.jansi" % "jansi" % "1.16" % Runtime
   ),
 
   grpcExePath := xsbti.api.SafeLazyProxy {
