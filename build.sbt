@@ -22,7 +22,6 @@ lazy val node = (project in file("node"))
   )
   .dependsOn(common)
 
-
 lazy val commonSettings = Seq(
   version := "0.1",
   scalaVersion := "2.12.3",
@@ -41,7 +40,8 @@ lazy val commonSettings = Seq(
     "com.typesafe.scala-logging" %% "scala-logging" % "3.7.2",
     "ch.qos.logback" % "logback-classic" % "1.2.3",
     "org.mortbay.jetty.alpn" % "alpn-boot" % "8.1.9.v20160720" % Runtime,
-    "org.fusesource.jansi" % "jansi" % "1.16" % Runtime
+    "org.fusesource.jansi" % "jansi" % "1.16" % Runtime,
+    "org.json4s" %% "json4s-native" % "3.5.3",
   ),
 
   grpcExePath := xsbti.api.SafeLazyProxy {

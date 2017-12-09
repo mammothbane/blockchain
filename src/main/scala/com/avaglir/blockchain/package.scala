@@ -10,8 +10,9 @@ import ch.qos.logback.classic.encoder.PatternLayoutEncoder
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.classic.{Level, Logger => CLogger}
 import ch.qos.logback.core.ConsoleAppender
-import com.avaglir.blockchain.generated.Transaction
+import com.avaglir.blockchain.generated._
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
+import io.grpc.{Channel, ManagedChannelBuilder}
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.concurrent.{Future, Promise}
@@ -54,7 +55,7 @@ package object blockchain {
   }
 
   implicit class byteHexString(b: Byte) {
-    def hexString: String = f"$b%02X"
+    def hexString: String = f"$b%02x"
   }
 
   implicit class byteArrayHexString(b: Array[Byte]) {
@@ -93,5 +94,42 @@ package object blockchain {
     appender.start()
 
     rootLogger.addAppender(appender)
+  }
+
+  implicit class nodeExt(t: Node) {
+    // TODO: look at caching this
+    def channel: Channel = ManagedChannelBuilder
+      .forAddress(addrString, t.getPort)
+      .usePlaintext(true)
+      .build
+
+    def addrString: String = {
+      val addr = ByteBuffer.allocate(4).putInt(t.getAddress).array()
+      addr.map { x => s"${ x.toInt & 0xff }" }.mkString(".")
+    }
+
+    def pretty: String =
+      if (t.hasInfo)  s"${t.getInfo.getName}@${t.addrString}:${t.getPort}"
+      else            s"${t.addrString}:${t.getPort}"
+
+    lazy val hash: Int = {
+      val buf = ByteBuffer.allocate(8)
+      buf
+        .putInt(t.getAddress)
+        .putInt(t.getPort)
+
+      val ret = MessageDigest.getInstance("SHA-256").digest(buf.array)
+      ByteBuffer.wrap(ret).getInt
+    }
+
+    def blockchainStub:         BlockchainGrpc.BlockchainStub         = BlockchainGrpc.newStub(channel)
+    def blockchainBlockingStub: BlockchainGrpc.BlockchainBlockingStub = BlockchainGrpc.newBlockingStub(channel)
+    def blockchainFutureStub:   BlockchainGrpc.BlockchainFutureStub   = BlockchainGrpc.newFutureStub(channel)
+    def registryStub:           RegistryGrpc.RegistryStub             = RegistryGrpc.newStub(channel)
+    def registryBlockingStub:   RegistryGrpc.RegistryBlockingStub     = RegistryGrpc.newBlockingStub(channel)
+    def registryFutureStub:     RegistryGrpc.RegistryFutureStub       = RegistryGrpc.newFutureStub(channel)
+    def clientStub:             ClientGrpc.ClientStub                 = ClientGrpc.newStub(channel)
+    def clientBlockingStub:     ClientGrpc.ClientBlockingStub         = ClientGrpc.newBlockingStub(channel)
+    def clientFutureStub:       ClientGrpc.ClientFutureStub           = ClientGrpc.newFutureStub(channel)
   }
 }

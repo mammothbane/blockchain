@@ -84,7 +84,5 @@ message Node {
 service Registry {
     rpc Join        (Node)          returns (UnitMessage);
     rpc Leave       (Node)          returns (UnitMessage);
-    rpc Heartbeat   (UnitMessage)   returns (UnitMessage);
-    rpc Info        (UnitMessage)   returns (Node.NodeInfo);
     rpc Exchange    (stream Node)   returns (stream Node);
 }

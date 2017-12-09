@@ -44,16 +44,12 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
   val startEpochMillis: Long = Instant.now.toEpochMilli
 
   val selfNode: Node = {
-    val addr = ByteBuffer.wrap(config.bind.getAddress).getInt
-
     val info = Node.NodeInfo.newBuilder
       .setName(config.name)
       .setUpSince(startEpochMillis)
       .build
 
-    Node.newBuilder
-      .setAddress(addr)
-      .setPort(config.port)
+    config.nodePartial
       .setInfo(info)
       .build
   }
@@ -84,16 +80,15 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
     logger.info("peers joined")
     logger.info("starting services")
 
-    val execs = services.map { sync =>
-      val exec = Executors.newSingleThreadScheduledExecutor()
-      exec.scheduleAtFixedRate(sync, sync.interval.toMillis / 2, sync.interval.toMillis, TimeUnit.MILLISECONDS)
-      exec
+    val exec = Executors.newScheduledThreadPool(10)
+    services.foreach { svc =>
+      exec.scheduleAtFixedRate(svc, svc.interval.toMillis / 2, svc.interval.toMillis, TimeUnit.MILLISECONDS)
     }
     logger.info("services started")
 
     server.awaitTermination()
 
-    execs.par.foreach { exec => exec.shutdown() }
-    execs.par.foreach { exec => exec.awaitTermination(2, TimeUnit.SECONDS) }
+    exec.shutdown()
+    exec.awaitTermination(2, TimeUnit.SECONDS)
   }
 }

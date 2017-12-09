@@ -1,25 +1,17 @@
 package com.avaglir.blockchain.client
 
-import java.security.{KeyPair, KeyPairGenerator}
-
 import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated.TransactionResponse.Data
-import com.avaglir.blockchain.generated.{ClientGrpc, RegistryGrpc, Transaction, UnitMessage}
-import com.google.protobuf.ByteString
+import com.avaglir.blockchain.generated._
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.ManagedChannelBuilder
+import io.grpc.stub.StreamObserver
+
+import scala.collection.mutable
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Promise}
 
 object Main extends LazyLogging {
-  val keyGen: KeyPairGenerator = {
-    val out = KeyPairGenerator.getInstance("RSA")
-    out.initialize(keylen)
-    out
-  }
-
-  val keyPair: KeyPair = keyGen.generateKeyPair()
-
-  val publicKey: Array[Byte] = keyPair.getPublic.getEncoded
-
   def main(args: Array[String]): Unit = {
     configLogger()
 
@@ -28,15 +20,37 @@ object Main extends LazyLogging {
     }
 
     val amount = 1.2f
-
     val recipient = Array.fill[Byte](0)(0)
 
-    val txn = Transaction.newBuilder()
-      .setAmount(amount)
-      .setSender(ByteString.copyFrom(publicKey))
-      .setRecipient(ByteString.copyFrom(recipient))
-      .setSignature(ByteString.copyFrom(transactionSignature(amount, publicKey, recipient, keyPair.getPrivate)))
-      .build()
+    val tClient = TransactionClient.apply
+    val txn = tClient.transaction(recipient, amount)
+
+    val accs = (0 to 10).map { idx =>
+      val channel = ManagedChannelBuilder
+        .forAddress(config.host, config.port + idx)
+        .usePlaintext(true)
+        .build
+
+      val regStub = RegistryGrpc.newStub(channel)
+      val promise = Promise[Unit]
+      val acc = mutable.Set.empty[Node]
+
+      val ret = regStub.exchange(new StreamObserver[Node] {
+        override def onNext(node: Node): Unit = {
+          acc += node
+        }
+        override def onCompleted(): Unit = promise.success()
+        override def onError(t: Throwable): Unit = promise.failure(t)
+      })
+
+      ret.onCompleted()
+
+      Await.ready(promise.future, Duration.Inf)
+
+      logger.info(s"acc len ${acc.size}")
+
+      acc
+    }
 
     val channel = ManagedChannelBuilder
       .forAddress(config.host, config.port)
@@ -54,10 +68,20 @@ object Main extends LazyLogging {
         sys.exit(1)
     }
 
-    val regStub = RegistryGrpc.newBlockingStub(channel)
+    val regStub = RegistryGrpc.newStub(channel)
 
-    regStub.heartbeat(UnitMessage.getDefaultInstance)
-    val info = regStub.info(UnitMessage.getDefaultInstance)
-    logger.info(s"got node info $info")
+    logger.info("reading nodes from target registry")
+    val promise = Promise[Unit]
+    val ret = regStub.exchange(new StreamObserver[Node] {
+      override def onNext(value: Node): Unit = {
+        logger.info(value.pretty)
+      }
+      override def onCompleted(): Unit = promise.success()
+      override def onError(t: Throwable): Unit = promise.failure(t)
+    })
+
+    ret.onCompleted()
+
+    Await.ready(promise.future, Duration.Inf)
   }
 }

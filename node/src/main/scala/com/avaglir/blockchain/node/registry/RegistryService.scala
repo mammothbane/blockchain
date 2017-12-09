@@ -2,6 +2,7 @@ package com.avaglir.blockchain.node.registry
 
 import java.time.{Duration, Instant}
 
+import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated._
 import com.avaglir.blockchain.node._
 import com.typesafe.scalalogging.LazyLogging
@@ -14,41 +15,24 @@ class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with L
   import snode._
 
   def joinImpl(node: Node): UnitMessage = {
-    logger.debug("<- join")
+    logger.debug(s"<- join (${node.pretty})")
 
     if (node.hash == selfNode.hash) return UnitMessage.getDefaultInstance
 
-    registrySynchronizer.lastHeartbeats(node.hash) = Instant.now
-    nodes.synchronized {
-      if (!(nodes contains node.hash) || !nodes(node.hash).hasInfo) {
-        nodes(node.hash) = node
-      }
+    registrySynchronizer.lastExchanges(node.hash) = Instant.now
+
+    if (!(nodes.contains(node.hash) && nodes(node.hash).hasInfo)) {
+      blocking { nodes.synchronized { nodes(node.hash) = node } }
     }
 
     UnitMessage.getDefaultInstance
   }
 
   val leaveImpl: (Node) => UnitMessage = (node: Node) => {
-    logger.debug("<- leave")
-    nodes.synchronized {
-      nodes -= node.hash
-    }
+    logger.debug(s"<- leave (${node.pretty})")
+    blocking { nodes.synchronized { nodes -= node.hash } }
 
     UnitMessage.getDefaultInstance
-  }
-
-  val heartbeatImpl: (UnitMessage) => UnitMessage = (_: UnitMessage) => {
-    logger.debug("<- heartbeat")
-    UnitMessage.getDefaultInstance
-  }
-
-  val infoImpl: (UnitMessage) => Node.NodeInfo = (_: UnitMessage) => {
-    logger.debug("<- info")
-    Node.NodeInfo
-      .newBuilder
-      .setName(config.name)
-      .setUpSince(startEpochMillis)
-      .build
   }
 
   def exchangeObserver(completeFunction: () => Unit = () => {},
@@ -59,18 +43,16 @@ class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with L
       override def onNext(value: Node): Unit = { acc += value }
 
       override def onCompleted(): Unit = {
-        blocking { nodes.synchronized {
-          acc
-            .filter { node =>
-              node.hash != selfNode.hash &&
-                (!nodes.contains(node.hash) || !nodes(node.hash).hasInfo) &&
-                { // ignore nodes that have timed out
-                  val diff = Duration.between(registrySynchronizer.lastHeartbeats.getOrElse(node.hash, Instant.now), Instant.now)
-                  diff.compareTo(Duration.ofSeconds(registrySynchronizer.nodeExpirationSec)) <= 0
-                }
-            }
-            .foreach { node => nodes(node.hash) = node }
-        } }
+        val newNodes = acc.filter { node =>
+          val upToDate = nodes.contains(node.hash) && nodes(node.hash).hasInfo
+
+          val diff = Duration.between(registrySynchronizer.lastExchanges.getOrElse(node.hash, Instant.now), Instant.now)
+          val expired = diff.compareTo(Duration.ofSeconds(registrySynchronizer.nodeExpirationSec)) <= 0
+
+          node.hash != selfNode.hash && !upToDate && !expired
+        }
+
+        blocking { nodes.synchronized { newNodes.foreach { node => nodes(node.hash) = node } } }
 
         completeFunction()
       }
@@ -79,7 +61,7 @@ class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with L
     }
 
   override def exchange(responseObserver: StreamObserver[Node]): StreamObserver[Node] = {
-    logger.debug("<- exchange")
+    logger.debug("<- exch")
 
     (nodes.values.toSeq :+ selfNode).foreach { responseObserver.onNext }
     responseObserver.onCompleted()
@@ -89,6 +71,4 @@ class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with L
 
   override def join(request: Node, responseObserver: StreamObserver[UnitMessage]): Unit = (joinImpl _).asJava(request, responseObserver)
   override def leave(request: Node, responseObserver: StreamObserver[UnitMessage]): Unit = leaveImpl.asJava(request, responseObserver)
-  override def heartbeat(request: UnitMessage, responseObserver: StreamObserver[UnitMessage]): Unit = heartbeatImpl.asJava(request, responseObserver)
-  override def info(request: UnitMessage, responseObserver: StreamObserver[Node.NodeInfo]): Unit = infoImpl.asJava(request, responseObserver)
 }
