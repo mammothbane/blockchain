@@ -1,8 +1,11 @@
 package com.avaglir
 
+import java.math.BigInteger
 import java.nio.ByteBuffer
+import java.security.interfaces.{RSAPrivateKey, RSAPublicKey}
 import java.security.spec.X509EncodedKeySpec
 import java.security.{KeyFactory, MessageDigest, PrivateKey}
+import java.time.Instant
 import java.util
 import javax.crypto.Cipher
 
@@ -12,6 +15,7 @@ import ch.qos.logback.classic.{Level, Logger => CLogger}
 import ch.qos.logback.core.ConsoleAppender
 import com.avaglir.blockchain.generated._
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
+import com.google.protobuf.ByteString
 import io.grpc.{Channel, ManagedChannelBuilder}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -20,38 +24,60 @@ import scala.concurrent.{Future, Promise}
 package object blockchain {
   val keylen = 512
   val defaultPort = 9148
+  val maxTxPerBlock = 10
 
-  private def preSigned(amount: Double, sender: Array[Byte], recipient: Array[Byte]): Array[Byte] = {
-    val ret = Array.fill[Byte](8 + sender.length + recipient.length)(0)
+  val workFactor = 10  // number of leading zero bits
+  val validMask: Long = -1L ^ ((1L << workFactor + 1) - 1)  // top `workFactor` bits are 1, all else 0
 
-    ByteBuffer.wrap(ret)
-      .putDouble(amount)
-      .put(sender)
-      .put(recipient)
+  implicit class txnSig(t: TransactionOrBuilder) {
+    private def preSignedHash: Array[Byte] = {
+      val ret = Array.fill[Byte](8 + t.getSender.size() + t.getRecipient.size())(0)
 
-    val digest = MessageDigest.getInstance("SHA-256")
-    digest.digest(ret)
-  }
+      ByteBuffer.wrap(ret)
+        .putDouble(t.getAmount)
+        .put(t.getSender.toByteArray)
+        .put(t.getRecipient.toByteArray)
 
-  def transactionSignature(amount: Double, sender: Array[Byte], recipient: Array[Byte], privateKey: PrivateKey): Array[Byte] = {
-    val cipher = Cipher.getInstance("RSA")
-    cipher.init(Cipher.ENCRYPT_MODE, privateKey)
-    cipher.doFinal(preSigned(amount, sender, recipient))
-  }
+      val digest = MessageDigest.getInstance("SHA-256")
+      digest.digest(ret)
+    }
 
-  implicit class txnSig(t: Transaction) {
+    def signature(privateKey: PrivateKey): Array[Byte] = {
+      require({
+        val rsaPub = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(t.getSender.toByteArray)).asInstanceOf[RSAPublicKey]
+        val rsaPriv = privateKey.asInstanceOf[RSAPrivateKey]
+
+        // this check borrowed from https://stackoverflow.com/questions/24121801/how-to-verify-if-the-private-key-matches-with-the-certificate
+        val prod = rsaPub.getPublicExponent.multiply(rsaPriv.getPrivateExponent).subtract(BigInteger.ONE)
+
+        rsaPub.getModulus == rsaPriv.getModulus &&
+          BigInteger.valueOf(2).modPow(prod, rsaPub.getModulus) == BigInteger.ONE
+      }, "private and public keys did not match")
+
+      val cipher = Cipher.getInstance("RSA")
+      cipher.init(Cipher.ENCRYPT_MODE, privateKey)
+      cipher.doFinal(preSignedHash)
+    }
+
     def validate: Boolean = {
       val cipher = Cipher.getInstance("RSA")
       val publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(t.getSender.toByteArray))
       cipher.init(Cipher.DECRYPT_MODE, publicKey)
 
       val decryptedHash = cipher.doFinal(t.getSignature.toByteArray)
-      val recalcHash = preSigned(t.getAmount, t.getSender.toByteArray, t.getRecipient.toByteArray)
+      val recalcHash = preSignedHash
 
       util.Arrays.equals(decryptedHash, recalcHash)
     }
 
     override def toString = s"Txn(sender: ${t.getSender.toByteArray.hexString}, recipient: ${t.getRecipient.toByteArray.hexString}, amount: ${t.getAmount}, signature: ${t.getSignature.toByteArray.hexString})"
+  }
+
+  implicit class txnBuilderExt(t: Transaction.Builder) {
+    def sign(privateKey: PrivateKey): Transaction.Builder = {
+      val signature = t.signature(privateKey)
+      t.setSignature(ByteString.copyFrom(signature))
+    }
   }
 
   implicit class byteHexString(b: Byte) {
@@ -96,9 +122,43 @@ package object blockchain {
     rootLogger.addAppender(appender)
   }
 
-  implicit class nodeExt(t: Node) {
+  implicit class blockExt(b: BlockOrBuilder) {
+    import scala.collection.JavaConverters._
+
+    private val allowableErrorMs = 100
+
+    def validate: Boolean = {
+      if (b.getBlockIndex < 0) return false
+
+      val txs = b.getTxnsList.asScala
+      if (b.getTxnsList.size() == 0) return false
+      if (b.getTxnsList.size() > maxTxPerBlock) return false
+      if (txs.exists { !_.validate }) return false
+
+      if (math.abs(b.getTimestamp - Instant.now.getEpochSecond*1000) > allowableErrorMs) return false
+
+      true
+    }
+
+    def calcProof: Long = {
+      val txs = b.getTxnsList.asScala
+
+      val buf = ByteBuffer.allocate(4*8 + txs.foldLeft(0) { (acc, x) => acc + x.getSignature.size() })
+      buf.putLong(b.getBlockIndex)
+      buf.putLong(b.getLastBlock)
+      buf.putLong(b.getNonce)
+      buf.putLong(b.getTimestamp)
+      txs.foreach { tx => buf.put(tx.getSignature.toByteArray) }
+
+      val digest = MessageDigest.getInstance("SHA-256")
+      val result = digest.digest(buf.array())
+      ByteBuffer.wrap(result).getLong()
+    }
+  }
+
+  implicit class nodeExt(t: NodeOrBuilder) {
     // TODO: look at caching this
-    def channel: Channel = ManagedChannelBuilder
+    lazy val channel: Channel = ManagedChannelBuilder
       .forAddress(addrString, t.getPort)
       .usePlaintext(true)
       .build

@@ -24,14 +24,12 @@ case class TransactionClient(kp: KeyPair) {
     write(serRepr)
   }
 
-  def transaction(recipient: Array[Byte], amount: Double): Transaction = {
-    Transaction.newBuilder()
-      .setAmount(amount)
-      .setSender(ByteString.copyFrom(publicKey))
-      .setRecipient(ByteString.copyFrom(recipient))
-      .setSignature(ByteString.copyFrom(transactionSignature(amount, publicKey, recipient, kp.getPrivate)))
-      .build()
-  }
+  def transaction(recipient: Array[Byte], amount: Double): Transaction = Transaction.newBuilder()
+    .setAmount(amount)
+    .setSender(ByteString.copyFrom(publicKey))
+    .setRecipient(ByteString.copyFrom(recipient))
+    .sign(kp.getPrivate)
+    .build()
 }
 
 object TransactionClient extends LazyLogging {

@@ -10,8 +10,8 @@ message Block {
     uint64 timestamp = 2;
     uint64 nonce = 3;
     repeated Transaction txns = 4;
-    fixed32 proof = 5;
-    fixed32 last_block = 6;
+    fixed64 proof = 5;
+    fixed64 last_block = 6;
 }
 
 message Transaction {
