@@ -36,10 +36,7 @@ class RegistrySynchronizer(snode: SNode) extends BgService with LazyLogging {
 
       val obs = node.registryStub.exchange(registryService.exchangeObserver({ () => p.complete(Success(Unit)) }, p.failure))
       val toSend = liveNodes.values.toSeq :+ selfNode
-      toSend.foreach { node =>
-        logger.debug(s"sending ${node.pretty}")
-        obs.onNext(node)
-      }
+      toSend.foreach { obs.onNext }
       obs.onCompleted()
 
       p.future.map { _ => lastExchanges(node.hash) = Instant.now }

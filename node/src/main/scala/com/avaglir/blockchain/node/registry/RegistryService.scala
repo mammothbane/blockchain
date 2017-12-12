@@ -23,11 +23,7 @@ class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with L
   def exchangeObserver(completeFunction: () => Unit = () => {},
                        errFunction: (Throwable) => Unit = (_: Throwable) => {}): StreamObserver[Node] =
     new StreamObserver[Node] {
-      logger.debug("stream created")
-
       override def onNext(node: Node): Unit = {
-        logger.debug(s"receiving: ${node.pretty}")
-
         val upToDate = liveNodes.contains(node.hash) && liveNodes(node.hash).hasInfo
 
         val diff = Duration.between(registrySynchronizer.lastExchanges.getOrElse(node.hash, Instant.now), Instant.now)
@@ -46,13 +42,9 @@ class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with L
   override def exchange(responseObserver: StreamObserver[Node]): StreamObserver[Node] = {
     logger.trace("<- exch")
 
-    (liveNodes.values.toSeq :+ selfNode).foreach { node =>
-      logger.debug(s"sending ${node.pretty}")
-      responseObserver.onNext(node)
-    }
-    responseObserver.onCompleted()
+    (liveNodes.values.toSeq :+ selfNode).foreach { responseObserver.onNext }
 
-    exchangeObserver(() => logger.debug("complete"), t => throw t)
+    exchangeObserver(responseObserver.onCompleted, t => logger.error(s"$t"))
   }
 
   override def leave(request: Node, responseObserver: StreamObserver[UnitMessage]): Unit = leaveImpl.asJava(request, responseObserver)
