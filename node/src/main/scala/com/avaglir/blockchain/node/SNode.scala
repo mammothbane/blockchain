@@ -6,12 +6,13 @@ import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.avaglir.blockchain._
-import com.avaglir.blockchain.generated.{Block, Node, Transaction}
+import com.avaglir.blockchain.generated._
 import com.avaglir.blockchain.node.registry.{RegistryService, RegistrySynchronizer}
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.{Server, ServerBuilder}
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.concurrent._
 import scala.util.Random
 
@@ -51,7 +52,7 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
 
   val liveNodes = mutable.HashMap.empty[Int, Node]
   val pendingTransactions = mutable.Map.empty[Array[Byte], Transaction]
-  val blockchain = mutable.Seq.empty[Block]
+  val blockchain: ListBuffer[Block] = mutable.ListBuffer.empty[Block]
 
   val startEpochMillis: Long = Instant.now.toEpochMilli
 
@@ -69,6 +70,33 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
   private implicit val execContext: ExecutionContextExecutor = ExecutionContext.global
 
   override def run(): Unit = {
+    if (!config.fastStart) blockchain += zeroBlock
+    else {
+      while (blockchain.isEmpty) {
+        logger.info("attempting to acquire initial block state")
+
+        initNodes.values.foldLeft[Either[Unit, Unit]](Left()) { (x, node) =>
+          x match {
+            case x @ Right(_) => x
+            case Left(_) =>
+              try {
+                val lastBlock = node.blockchainBlockingStub.lastBlock(UnitMessage.getDefaultInstance)
+                blockchain += lastBlock
+
+                logger.info(s"success: block $lastBlock acquired from ${node.pretty}")
+
+                Right()
+              } catch {
+                case _: Throwable => Left()
+              }
+          }
+        }
+
+        logger.warn("failed to contact init nodes. retrying shortly...")
+        Thread.sleep(500)
+      }
+    }
+
     server.start()
 
     logger.info("starting services")

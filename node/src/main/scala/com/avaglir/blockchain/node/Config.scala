@@ -89,6 +89,11 @@ object Config {
           case x if x < 0 => failure("invalid node count")
           case _ => success
         }
+
+      checkConfig { c =>
+        if (c.fastStart && c.nodeSet.isEmpty) failure("can't use faststart set without any initial nodes")
+        else success
+      }
     }.parse(args, Config())
   }
 }

@@ -1,5 +1,6 @@
 package com.avaglir
 
+import java.lang.{Long => JLong}
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.security.interfaces.{RSAPrivateKey, RSAPublicKey}
@@ -29,17 +30,35 @@ package object blockchain {
   val workFactor = 10  // number of leading zero bits
   val validMask: Long = -1L ^ ((1L << workFactor + 1) - 1)  // top `workFactor` bits are 1, all else 0
 
+  val zeroBlock: Block = {
+    val builder = Block.newBuilder
+      .setNonce(0)
+      .setTimestamp(0)
+      .setBlockIndex(0)
+      .setLastBlock(0)
+      .clearTxns()
+
+    builder
+      .setProof(builder.proof)
+      .build
+  }
+
+  def nowEpochMillis: Long = {
+    val inst = Instant.now
+    inst.getEpochSecond * 1000L + inst.getNano.toLong / 1000000L
+  }
+
   implicit class txnSig(t: TransactionOrBuilder) {
     private def preSignedHash: Array[Byte] = {
-      val ret = Array.fill[Byte](8 + t.getSender.size() + t.getRecipient.size())(0)
-
-      ByteBuffer.wrap(ret)
+      val ret = ByteBuffer.allocate(8 + t.getSender.size() + t.getRecipient.size() + 8 + 8)
         .putDouble(t.getAmount)
         .put(t.getSender.toByteArray)
         .put(t.getRecipient.toByteArray)
+        .putLong(t.getNonce)
+        .putLong(t.getTimestamp)
 
       val digest = MessageDigest.getInstance("SHA-256")
-      digest.digest(ret)
+      digest.digest(ret.array)
     }
 
     def signature(privateKey: PrivateKey): Array[Byte] = {
@@ -59,7 +78,11 @@ package object blockchain {
       cipher.doFinal(preSignedHash)
     }
 
+    private val skewToleranceMs = 500
     def validate: Boolean = {
+      // make sure tx isn't too far in the future
+      if (t.getTimestamp - nowEpochMillis > skewToleranceMs) return false
+
       val cipher = Cipher.getInstance("RSA")
       val publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(t.getSender.toByteArray))
       cipher.init(Cipher.DECRYPT_MODE, publicKey)
@@ -125,22 +148,27 @@ package object blockchain {
   implicit class blockExt(b: BlockOrBuilder) {
     import scala.collection.JavaConverters._
 
-    private val allowableErrorMs = 100
+    private val allowableSkewMillis = 500
 
     def validate: Boolean = {
-      if (b.getBlockIndex < 0) return false
+      b.getBlockIndex match {
+        case 0 => return b == zeroBlock
+        case x if x < 0 => return false
+        case _ =>
+      }
+
+      // make sure block isn't too far in the future
+      if (b.getTimestamp - nowEpochMillis > allowableSkewMillis) return false
 
       val txs = b.getTxnsList.asScala
       if (b.getTxnsList.size() == 0) return false
       if (b.getTxnsList.size() > maxTxPerBlock) return false
       if (txs.exists { !_.validate }) return false
 
-      if (math.abs(b.getTimestamp - Instant.now.getEpochSecond*1000) > allowableErrorMs) return false
-
       true
     }
 
-    def calcProof: Long = {
+    def proof: Long = {
       val txs = b.getTxnsList.asScala
 
       val buf = ByteBuffer.allocate(4*8 + txs.foldLeft(0) { (acc, x) => acc + x.getSignature.size() })

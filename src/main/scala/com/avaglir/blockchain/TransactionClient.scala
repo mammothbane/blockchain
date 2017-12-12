@@ -2,7 +2,7 @@ package com.avaglir.blockchain
 
 import java.io.File
 import java.security.spec.X509EncodedKeySpec
-import java.security.{KeyFactory, KeyPair, KeyPairGenerator}
+import java.security.{KeyFactory, KeyPair, KeyPairGenerator, SecureRandom}
 
 import com.avaglir.blockchain.generated.Transaction
 import com.google.protobuf.ByteString
@@ -16,18 +16,18 @@ case class TransactionClient(kp: KeyPair) {
   val publicKey: Array[Byte] = kp.getPublic.getEncoded
   val privateKey: Array[Byte] = kp.getPrivate.getEncoded
 
+  val random = new SecureRandom()
+
   private lazy val serRepr: SerializedRepr = SerializedRepr(publicKey, privateKey)
 
-  lazy val json: String = {
-    import org.json4s.native.Serialization.write
-
-    write(serRepr)
-  }
+  lazy val json: String = org.json4s.native.Serialization.write(serRepr)
 
   def transaction(recipient: Array[Byte], amount: Double): Transaction = Transaction.newBuilder()
     .setAmount(amount)
     .setSender(ByteString.copyFrom(publicKey))
     .setRecipient(ByteString.copyFrom(recipient))
+    .setNonce(random.nextLong)
+    .setTimestamp(nowEpochMillis)
     .sign(kp.getPrivate)
     .build()
 }

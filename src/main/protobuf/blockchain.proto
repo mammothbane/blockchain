@@ -18,7 +18,9 @@ message Transaction {
     bytes sender = 1;
     bytes recipient = 2;
     double amount = 3;
-    bytes signature = 4;
+    uint64 timestamp = 4;
+    uint64 nonce = 5;
+    bytes signature = 6;
 }
 
 message TransactionResponse {
@@ -33,24 +35,14 @@ message TransactionResponse {
     Data data = 1;
 }
 
-message BlockLookupResponse {
-    enum Data {
-        ERR = 0;
-        OK = 1;
-
-        BLOCK_NOT_FOUND = 2;
-    }
-
-    Data data = 1;
-    Block block = 2;
+message SyncRequest {
+    uint64 fromBlock = 1;
 }
 
-message BlockMinedResponse {
+message SyncBackProgress {
     enum Data {
-        ERR = 0;
-        OK = 1;
-
-        WORK_MISMATCH = 2;
+        CONTINUE = 0;
+        FINISHED = 1;
     }
 
     Data data = 1;
@@ -61,12 +53,10 @@ service Client {
 }
 
 service Blockchain {
-    rpc LastBlock           (UnitMessage)           returns (Block);
-    rpc AllBlocks           (UnitMessage)           returns (stream Block);
-    rpc Ancestor            (Block)                 returns (BlockLookupResponse);
-    rpc ExchangePendingTxns (stream Transaction)    returns (stream Transaction);
-
-    rpc BlockMined          (Block)                 returns (BlockMinedResponse);
+    rpc LastBlock           (UnitMessage)               returns (Block);
+    rpc ExchangePendingTxns (stream Transaction)        returns (stream Transaction);
+    rpc Sync                (SyncRequest)               returns (stream Block);
+    rpc Syncback            (stream SyncBackProgress)   returns (stream Block);
 }
 
 message Node {
