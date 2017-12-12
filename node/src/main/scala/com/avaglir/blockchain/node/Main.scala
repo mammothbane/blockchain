@@ -22,8 +22,7 @@ object Main {
     }
 
     val nodeNames = List(
-      "weir", "shumway", "smick", "hendo", "bonner", "scott-heiser", "baker", "pasterczyk", "halperin",
-      "morton", "madondo"
+      "weir" //, "shumway" //, "smick", "hendo", "bonner", "scott-heiser", "baker", "pasterczyk", "halperin", "morton", "madondo"
     )
 
     def nodeAddr(i: Int) = new URL(s"http://${config.bind.getHostAddress}:${config.port + i}")
@@ -44,6 +43,7 @@ object Main {
     }
 
     val exec = Executors.newCachedThreadPool
+
     nodes.foreach { exec.submit }
     exec.shutdown()
 

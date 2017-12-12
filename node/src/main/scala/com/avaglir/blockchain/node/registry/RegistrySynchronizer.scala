@@ -24,21 +24,40 @@ class RegistrySynchronizer(snode: SNode) extends BgService with LazyLogging {
   private implicit val execContext: ExecutionContextExecutor = ExecutionContext.global
 
   override def run(): Unit = {
-    logger.debug("-> exch")
+    val contactNodes = if (liveNodes.nonEmpty) liveNodes else {
+      logger.warn("no live nodes for registry sync - falling back on initial node set")
+      initNodes
+    }
 
-    val exchanges = nodes.values.par.map { node =>
+    logger.debug(s"-> exch (${contactNodes.size} target(s))")
+
+    val exchanges = contactNodes.values.par.map { node =>
       val p = Promise[Unit]()
 
       val obs = node.registryStub.exchange(registryService.exchangeObserver({ () => p.complete(Success(Unit)) }, p.failure))
-      (nodes.values.toSeq :+ selfNode).foreach {
-        obs.onNext
+      val toSend = liveNodes.values.toSeq :+ selfNode
+      toSend.foreach { node =>
+        logger.debug(s"sending ${node.pretty}")
+        obs.onNext(node)
       }
       obs.onCompleted()
 
-      p.future
+      p.future.map { _ => lastExchanges(node.hash) = Instant.now }
     }.seq
 
     Await.ready(Future.sequence(exchanges), Duration(5, TimeUnit.SECONDS))
       .recover { case t => logger.error(s"exchange failed: ${t.getClass} :: ${t.getMessage} ") }
+
+    val diffs = lastExchanges.mapValues { inst => JDuration.between(inst, Instant.now) }
+
+    val expired = liveNodes.keySet.intersect(diffs.keySet).filter { hash => diffs(hash).compareTo(JDuration.ofSeconds(registrySynchronizer.nodeExpirationSec)) > 0 }
+
+    if (expired.nonEmpty) {
+      logger.info(s"removing nodes: ${expired.map { hash => liveNodes(hash).pretty }.mkString(",")}")
+      blocking { liveNodes.synchronized { liveNodes --= expired }}
+    }
+
+    val cull = diffs.filter { case (_, diff) => diff.compareTo(JDuration.ofSeconds(2*registrySynchronizer.nodeExpirationSec)) > 0}.keySet
+    lastExchanges --= cull
   }
 }

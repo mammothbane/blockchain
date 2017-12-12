@@ -7,7 +7,6 @@ import com.typesafe.scalalogging.LazyLogging
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
 
-import scala.collection.mutable
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Promise}
 
@@ -24,33 +23,6 @@ object Main extends LazyLogging {
 
     val tClient = TransactionClient.apply
     val txn = tClient.transaction(recipient, amount)
-
-    val accs = (0 to 10).map { idx =>
-      val channel = ManagedChannelBuilder
-        .forAddress(config.host, config.port + idx)
-        .usePlaintext(true)
-        .build
-
-      val regStub = RegistryGrpc.newStub(channel)
-      val promise = Promise[Unit]
-      val acc = mutable.Set.empty[Node]
-
-      val ret = regStub.exchange(new StreamObserver[Node] {
-        override def onNext(node: Node): Unit = {
-          acc += node
-        }
-        override def onCompleted(): Unit = promise.success()
-        override def onError(t: Throwable): Unit = promise.failure(t)
-      })
-
-      ret.onCompleted()
-
-      Await.ready(promise.future, Duration.Inf)
-
-      logger.info(s"acc len ${acc.size}")
-
-      acc
-    }
 
     val channel = ManagedChannelBuilder
       .forAddress(config.host, config.port)

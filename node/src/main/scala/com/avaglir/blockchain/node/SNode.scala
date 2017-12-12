@@ -13,7 +13,7 @@ import io.grpc.{Server, ServerBuilder}
 
 import scala.collection.mutable
 import scala.concurrent._
-import scala.concurrent.duration.Duration
+import scala.util.Random
 
 class SNode(val config: Config) extends Runnable with LazyLogging {
   val registrySynchronizer = new RegistrySynchronizer(this)
@@ -37,7 +37,19 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
     builder.build()
   }
 
-  val nodes = mutable.HashMap.empty[Int, Node]
+  val initNodes: Map[Int, Node] = config.nodeSet.par.map { node =>
+    val out = Node.newBuilder
+    out.setPort(node.getPort)
+
+    val addr = InetAddress.getByName(node.getHost).getAddress
+    if (addr.length != 4) throw new IllegalArgumentException(s"address $addr did not resolve to a valid IPv4 address")
+
+    out.setAddress(ByteBuffer.wrap(addr).getInt())
+    val ret = out.build
+    ret.hash -> ret
+  }.seq.toMap
+
+  val liveNodes = mutable.HashMap.empty[Int, Node]
   val pendingTransactions = mutable.Map.empty[Array[Byte], Transaction]
   val blockchain = mutable.Seq.empty[Block]
 
@@ -59,30 +71,13 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
   override def run(): Unit = {
     server.start()
 
-    nodes ++= config.nodeSet.par.map { node =>
-      val out = Node.newBuilder
-      out.setPort(node.getPort)
-
-      val addr = InetAddress.getByName(node.getHost).getAddress
-      if (addr.length != 4) throw new IllegalArgumentException(s"address $addr did not resolve to a valid IPv4 address")
-
-      out.setAddress(ByteBuffer.wrap(addr).getInt())
-      val ret = out.build
-      ret.hash -> ret
-    }.seq
-
-    logger.info("transmitting joins to peers")
-    val joins = nodes.values.par.map { node =>
-      node.registryFutureStub.join(selfNode).asScala
-    }.seq
-
-    Await.ready(Future.sequence(joins), Duration(20, TimeUnit.SECONDS))
-    logger.info("peers joined")
     logger.info("starting services")
 
-    val exec = Executors.newScheduledThreadPool(10)
+    val exec = Executors.newScheduledThreadPool(config.parallelism)
     services.foreach { svc =>
-      exec.scheduleAtFixedRate(svc, svc.interval.toMillis / 2, svc.interval.toMillis, TimeUnit.MILLISECONDS)
+      // delay randomly so stuff doesn't stack up too much
+      val delay = (Random.nextDouble * svc.interval.toMillis).toInt
+      exec.scheduleAtFixedRate(svc, delay, svc.interval.toMillis, TimeUnit.MILLISECONDS)
     }
     logger.info("services started")
 
