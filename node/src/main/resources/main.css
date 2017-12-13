@@ -1,0 +1,40 @@
+html, body {
+    height: 100%;
+    background-color: #000000;
+    padding: 0;
+    margin: 0;
+}
+
+body {
+    font-family: "Helvetica", Helvetica, Verdana, Arial, sans-serif;
+    color: #eeeeee;
+}
+
+div {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    display: flex;
+}
+
+.row {
+    width: 100%;
+    flex-flow: row nowrap;
+    padding: 5px;
+}
+
+.cell {
+    width: 450px;
+    flex-direction: column;
+    background: white;
+    color: black;
+    margin: 15px;
+}
+
+.field {
+    flex-grow: 1;
+    padding: 0 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

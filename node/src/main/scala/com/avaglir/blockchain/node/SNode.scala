@@ -3,6 +3,7 @@ package com.avaglir.blockchain.node
 import java.lang.{Long => JLong}
 import java.net.InetAddress
 import java.nio.ByteBuffer
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
@@ -12,6 +13,7 @@ import com.avaglir.blockchain.node.blockchain.{BlockMiner, BlockSynchronizer, Bl
 import com.avaglir.blockchain.node.registry.{RegistryService, RegistrySynchronizer}
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.{Server, ServerBuilder}
+import org.http4s.server.blaze.BlazeBuilder
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -31,7 +33,7 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
   val services: List[BgService] =
     List(registrySynchronizer, blockSynchronizer) ++ blockMiner
 
-  val server: Server = {
+  val sv: Server = {
     val builder = ServerBuilder.forPort(config.port)
 
     builder.addService(blockchainService)
@@ -81,11 +83,9 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
         blockchain += b
 
         txs.foreach { tx =>
-          // TODO: disable this behavior -- all senders should already exist in the ledger
-
           val senderKey = tx.getSender.key
-          val sendCur = ledger.getOrElseUpdate(senderKey, 0)
-          ledger(senderKey) = sendCur - tx.getAmount
+          val sendCur = ledger.getOrElseUpdate(senderKey, 0) // TODO: disable this behavior -- all senders should already exist in the ledger
+          if (!tx.getBlockReward) ledger(senderKey) = sendCur - tx.getAmount
 
           val recipKey = tx.getRecipient.key
           val recipCur = ledger.getOrElseUpdate(recipKey, 0)
@@ -111,9 +111,11 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
           val txs = block.getTxnsList.asScala
           txs.foreach { tx =>
             val sig = tx.getSignature.key
-            if (!tx.getBlockReward) pendingTransactions += sig -> tx
+            if (!tx.getBlockReward) {
+              ledger(tx.getSender.key) += tx.getAmount
+              pendingTransactions += sig -> tx
+            }
             acceptedTransactions -= sig
-            ledger(tx.getSender.key) += tx.getAmount
             ledger(tx.getRecipient.key) -= tx.getAmount
           }
         }
@@ -168,7 +170,7 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
       }
     }
 
-    server.start()
+    sv.start()
 
     logger.info("starting services")
 
@@ -180,7 +182,74 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
     }
     logger.info("services started")
 
-    server.awaitTermination()
+    import fs2.interop.cats._
+    import org.http4s._
+    import org.http4s.dsl._
+
+    import scalatags.Text.all._
+
+    implicit def tagEnc[T <: BaseTagType]: EntityEncoder[T] = EntityEncoder[String]
+      .contramap { (x: T) => "<!DOCTYPE html>\n" + x.render}
+      .withContentType(MediaType.`text/html`)
+
+    def hash(ary: Array[Byte]): String = {
+      val md = MessageDigest.getInstance("MD5")
+      md.digest(ary).hexString
+    }
+
+    val svc = HttpService {
+      case GET -> Root => Ok(html(
+        head(
+          tag("title")(config.name),
+          link(rel := "stylesheet", `type` := "text/css", href := "main.css")
+        ),
+        body(
+          div(id := "main", style := "flex-direction: column",
+            h1(style := "font-size: 48px;", "BLOCKS"),
+            blockchain.map { block =>
+              div(
+                `class` := "cell",
+                div(
+                  `class` := "row",
+                  span(`class` := "field", b("index "), block.getBlockIndex),
+                  span(`class` := "field", b("proof "), ByteBuffer.allocate(8).putLong(block.getProof).array().hexString)
+                ),
+                div(
+                  `class` := "row",
+                  span(`class` := "field", b("nonce "), block.getNonce),
+                  span(`class` := "field", b("timestamp "), block.getTimestamp)
+                )
+              )
+            },
+            h1(style := "font-size: 48px", "LEDGER"),
+            ledger.map { case (id, amt) =>
+              div(
+                `class` := "cell",
+                div(
+                  `class` := "row",
+                  span(`class` := "field", b("id "), hash(id.b))
+                ),
+                div(
+                  `class` := "row",
+                  span(`class` := "field", b("amount "), amt)
+                )
+              )
+            }.toSeq
+        )
+      )))
+      case req @ GET -> Root / path if List(".css").exists(path.endsWith) => StaticFile.fromResource(s"/$path", Some(req)).getOrElseF(NotFound())
+    }
+
+    val httpServer = BlazeBuilder
+      .bindHttp(config.port + 1000)
+      .mountService(svc, "/")
+      .run
+
+    logger.info(s"http server started on port ${config.port + 1000}")
+
+    sv.awaitTermination()
+
+    httpServer.shutdownNow()
 
     exec.shutdown()
     exec.awaitTermination(2, TimeUnit.SECONDS)

@@ -18,7 +18,7 @@ import com.avaglir.blockchain.generated._
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
 import com.google.protobuf.ByteString
 import com.typesafe.scalalogging.LazyLogging
-import io.grpc.{Channel, ManagedChannelBuilder}
+import io.grpc.{ManagedChannel, ManagedChannelBuilder}
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.concurrent.{Future, Promise}
@@ -217,11 +217,21 @@ package object blockchain {
   }
 
   implicit class nodeExt(t: NodeOrBuilder) {
-    // TODO: look at caching this
-    lazy val channel: Channel = ManagedChannelBuilder
-      .forAddress(addrString, t.getPort)
-      .usePlaintext(true)
-      .build
+    private var chanInitialized = false
+
+    lazy val channel: ManagedChannel = {
+      chanInitialized = true
+      ManagedChannelBuilder
+        .forAddress(addrString, t.getPort)
+        .usePlaintext(true)
+        .build
+    }
+
+    // SUPER gross and hacky
+    override def finalize(): Unit = {
+      if (chanInitialized) channel.shutdown()
+      super.finalize()
+    }
 
     def addrString: String = {
       val addr = ByteBuffer.allocate(4).putInt(t.getAddress).array()

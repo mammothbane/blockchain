@@ -19,7 +19,7 @@ object Main extends LazyLogging {
     }
 
     val amount = 1200
-    val recipient = Array.fill[Byte](0)(0)
+    val recipient = List(0xde, 0xad, 0xbe, 0xef).map { _.toByte }.toArray
 
     val tClient = TransactionClient.apply
     val txn = tClient.transaction(recipient, amount)

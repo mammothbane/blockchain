@@ -15,10 +15,18 @@ lazy val client = (project in file("client"))
   )
   .dependsOn(common)
 
+val Http4sVersion = "0.17.6"
+
 lazy val node = (project in file("node"))
   .settings(commonSettings: _*)
   .settings(
-    name := "blockchain-node"
+    name := "blockchain-node",
+    libraryDependencies ++= Seq(
+      "org.http4s"      %% "http4s-blaze-server" % Http4sVersion,
+      "org.http4s"      %% "http4s-circe"        % Http4sVersion,
+      "org.http4s"      %% "http4s-dsl"          % Http4sVersion,
+      "com.lihaoyi" %% "scalatags" % "0.6.7"
+    )
   )
   .dependsOn(common)
 
