@@ -20,7 +20,8 @@ message Transaction {
     double amount = 3;
     uint64 timestamp = 4;
     uint64 nonce = 5;
-    bytes signature = 6;
+    bool blockReward = 6;
+    bytes signature = 7;
 }
 
 message TransactionResponse {
@@ -48,12 +49,24 @@ message SyncBackProgress {
     Data data = 1;
 }
 
+message InitData {
+    Block lastBlock = 1;
+    repeated bytes acceptedTransactions = 2;
+
+    message LedgerEntry {
+        fixed64 id = 1;
+        double amount = 2;
+    }
+
+    repeated LedgerEntry ledger = 3;
+}
+
 service Client {
     rpc SubmitTransaction (Transaction) returns (TransactionResponse);
 }
 
 service Blockchain {
-    rpc LastBlock           (UnitMessage)               returns (Block);
+    rpc RetriveInitData     (UnitMessage)               returns (InitData);
     rpc ExchangePendingTxns (stream Transaction)        returns (stream Transaction);
     rpc Sync                (SyncRequest)               returns (stream Block);
     rpc Syncback            (stream SyncBackProgress)   returns (stream Block);

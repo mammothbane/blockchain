@@ -1,5 +1,6 @@
 package com.avaglir.blockchain.node
 
+import java.lang.{Long => JLong}
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.time.Instant
@@ -11,6 +12,7 @@ import com.avaglir.blockchain.node.registry.{RegistryService, RegistrySynchroniz
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.{Server, ServerBuilder}
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent._
@@ -51,8 +53,62 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
   }.seq.toMap
 
   val liveNodes = mutable.HashMap.empty[Int, Node]
+
   val pendingTransactions = mutable.Map.empty[Array[Byte], Transaction]
+  val acceptedTransactions = mutable.Set.empty[Array[Byte]]
+
   val blockchain: ListBuffer[Block] = mutable.ListBuffer.empty[Block]
+  val ledger = mutable.Map.empty[Long, Double]
+
+  def pushBlock(b: Block): Either[String, Unit] = {
+    blockchain.synchronized {
+      b.validate.left.foreach { x => return Left(s"block failed to validate: $x") }
+
+      val last = blockchain.last
+      if (last.getBlockIndex != b.getBlockIndex - 1) return Left("block index mismatch")
+      if (last.getTimestamp >= b.getTimestamp) return Left("timestamp mismatch")
+      if (last.getProof != b.getLastBlock) return Left("block proof mismatch")
+
+      val txs = b.getTxnsList.asScala
+      if (txs.count { _.getBlockReward } != 1) return Left("bad block reward format")
+
+      val txSigs = txs.map { _.getSignature.toByteArray }.toSet
+
+      pendingTransactions.synchronized {
+        acceptedTransactions.synchronized {
+          if ((txSigs intersect acceptedTransactions).nonEmpty) return Left("some transactions already accepted")
+
+          pendingTransactions --= txSigs
+          acceptedTransactions ++= txSigs
+          blockchain += b
+        }
+      }
+    }
+
+    Right()
+  }
+
+  def popBlocks(toIdx: Long): List[Block] = {
+    blockchain.synchronized {
+      val remove = blockchain.reverseIterator
+        .takeWhile { x => JLong.compareUnsigned(x.getBlockIndex, toIdx) >= 0 }
+        .toList
+
+      blockchain --= remove
+
+      pendingTransactions.synchronized {
+        acceptedTransactions.synchronized {
+          remove.foreach { block =>
+            val txs = block.getTxnsList.asScala
+            pendingTransactions ++= txs.map { tx => tx.getSignature.toByteArray -> tx }
+            acceptedTransactions --= txs.map { tx => tx.getSignature.toByteArray }
+          }
+        }
+      }
+
+      remove
+    }
+  }
 
   val startEpochMillis: Long = Instant.now.toEpochMilli
 
@@ -80,6 +136,8 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
             case x @ Right(_) => x
             case Left(_) =>
               try {
+                val stub = node.blockchainBlockingStub
+
                 val lastBlock = node.blockchainBlockingStub.lastBlock(UnitMessage.getDefaultInstance)
                 blockchain += lastBlock
 

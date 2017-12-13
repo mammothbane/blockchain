@@ -17,6 +17,7 @@ import ch.qos.logback.core.ConsoleAppender
 import com.avaglir.blockchain.generated._
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
 import com.google.protobuf.ByteString
+import com.typesafe.scalalogging.LazyLogging
 import io.grpc.{Channel, ManagedChannelBuilder}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -30,18 +31,16 @@ package object blockchain {
   val workFactor = 10  // number of leading zero bits
   val validMask: Long = -1L ^ ((1L << workFactor + 1) - 1)  // top `workFactor` bits are 1, all else 0
 
-  val zeroBlock: Block = {
-    val builder = Block.newBuilder
+  val blockReward = 10d
+
+  val zeroBlock: Block = Block.newBuilder
       .setNonce(0)
       .setTimestamp(0)
       .setBlockIndex(0)
       .setLastBlock(0)
+      .setProof(0)
       .clearTxns()
-
-    builder
-      .setProof(builder.proof)
       .build
-  }
 
   def nowEpochMillis: Long = {
     val inst = Instant.now
@@ -50,12 +49,13 @@ package object blockchain {
 
   implicit class txnSig(t: TransactionOrBuilder) {
     private def preSignedHash: Array[Byte] = {
-      val ret = ByteBuffer.allocate(8 + t.getSender.size() + t.getRecipient.size() + 8 + 8)
+      val ret = ByteBuffer.allocate(8 + t.getSender.size() + t.getRecipient.size() + 8 + 8 + 1)
         .putDouble(t.getAmount)
         .put(t.getSender.toByteArray)
         .put(t.getRecipient.toByteArray)
         .putLong(t.getNonce)
         .putLong(t.getTimestamp)
+        .putChar(if (t.getBlockReward) 1 else 0)
 
       val digest = MessageDigest.getInstance("SHA-256")
       digest.digest(ret.array)
@@ -79,9 +79,15 @@ package object blockchain {
     }
 
     private val skewToleranceMs = 500
-    def validate: Boolean = {
-      // make sure tx isn't too far in the future
-      if (t.getTimestamp - nowEpochMillis > skewToleranceMs) return false
+    def validate: Either[String, Unit] = {
+      if (t.getTimestamp - nowEpochMillis > skewToleranceMs) return Left("too far in future")
+
+      if (t.getBlockReward) {
+        if (t.getAmount != blockReward) return Left("block reward amount mismatch")
+        if (t.getSender != t.getRecipient) return Left("reward tx had mismatched recipient")
+      } else {
+        if (t.getSender == t.getRecipient) return Left("sender cannot be recipient in non-reward tx")
+      }
 
       val cipher = Cipher.getInstance("RSA")
       val publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(t.getSender.toByteArray))
@@ -90,7 +96,8 @@ package object blockchain {
       val decryptedHash = cipher.doFinal(t.getSignature.toByteArray)
       val recalcHash = preSignedHash
 
-      util.Arrays.equals(decryptedHash, recalcHash)
+      if (util.Arrays.equals(decryptedHash, recalcHash)) Right()
+      else Left("signature invalid")
     }
 
     override def toString = s"Txn(sender: ${t.getSender.toByteArray.hexString}, recipient: ${t.getRecipient.toByteArray.hexString}, amount: ${t.getAmount}, signature: ${t.getSignature.toByteArray.hexString})"
@@ -145,30 +152,35 @@ package object blockchain {
     rootLogger.addAppender(appender)
   }
 
-  implicit class blockExt(b: BlockOrBuilder) {
+  implicit class blockExt(b: BlockOrBuilder) extends LazyLogging {
     import scala.collection.JavaConverters._
 
     private val allowableSkewMillis = 500
 
-    def validate: Boolean = {
-      b.getBlockIndex match {
-        case 0 => return b == zeroBlock
-        case x if x < 0 => return false
-        case _ =>
+    def validate: Either[String, Unit] = {
+      if (b.getBlockIndex == 0) {
+        return if (b == zeroBlock) Right() else Left("block claimed index 0 but didn't match the zero block")
       }
 
-      // make sure block isn't too far in the future
-      if (b.getTimestamp - nowEpochMillis > allowableSkewMillis) return false
+      if (b.calcProof != b.getProof) return Left("bad block proof")
+      if ((b.getProof & validMask) != 0) return Left("proof invalid")
+
+      if (b.getTimestamp - nowEpochMillis > allowableSkewMillis) return Left("block too far in future")
 
       val txs = b.getTxnsList.asScala
-      if (b.getTxnsList.size() == 0) return false
-      if (b.getTxnsList.size() > maxTxPerBlock) return false
-      if (txs.exists { !_.validate }) return false
+      if (txs.lengthCompare(2) < 0) return Left("too few transactions")
+      if (txs.lengthCompare(maxTxPerBlock) > 0) return Left("too many transactions")
 
-      true
+      txs.find { _.validate.isLeft }.foreach { x =>
+        return Left(s"transaction $x failed to validate: ${x.validate.left.get}")
+      }
+
+      if (txs.count { _.getBlockReward } != 1) return Left("block reward unclaimed or claimed multiple times")
+
+      Right()
     }
 
-    def proof: Long = {
+    def calcProof: Long = {
       val txs = b.getTxnsList.asScala
 
       val buf = ByteBuffer.allocate(4*8 + txs.foldLeft(0) { (acc, x) => acc + x.getSignature.size() })

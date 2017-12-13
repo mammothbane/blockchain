@@ -22,12 +22,13 @@ case class TransactionClient(kp: KeyPair) {
 
   lazy val json: String = org.json4s.native.Serialization.write(serRepr)
 
-  def transaction(recipient: Array[Byte], amount: Double): Transaction = Transaction.newBuilder()
-    .setAmount(amount)
+  def transaction(recipient: Array[Byte], amount: Double, isBlockReward: Boolean = false): Transaction = Transaction.newBuilder()
+    .setAmount(if (!isBlockReward) amount else blockReward)
     .setSender(ByteString.copyFrom(publicKey))
     .setRecipient(ByteString.copyFrom(recipient))
     .setNonce(random.nextLong)
     .setTimestamp(nowEpochMillis)
+    .setBlockReward(isBlockReward)
     .sign(kp.getPrivate)
     .build()
 }
