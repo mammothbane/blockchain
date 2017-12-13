@@ -21,7 +21,7 @@ case class TransactionClient(keyPair: KeyPair) {
 
   lazy val json: String = org.json4s.native.Serialization.write(serRepr)
 
-  def transaction(recipient: Array[Byte], amount: Double, isBlockReward: Boolean = false): Transaction = Transaction.newBuilder
+  def transaction(recipient: Array[Byte], amount: Long, isBlockReward: Boolean = false): Transaction = Transaction.newBuilder
     .setAmount(if (!isBlockReward) amount else blockReward)
     .setSender(publicKey)
     .setRecipient(recipient)

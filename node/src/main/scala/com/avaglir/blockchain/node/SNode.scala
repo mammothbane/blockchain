@@ -59,7 +59,7 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
   val acceptedTransactions = mutable.Set.empty[ByteArrayKey]
 
   val blockchain: ListBuffer[Block] = mutable.ListBuffer.empty[Block]
-  val ledger = mutable.Map.empty[ByteArrayKey, Double]
+  val ledger = mutable.Map.empty[ByteArrayKey, Long]
 
   def pushBlock(b: Block): Either[String, Unit] = {
     blockchain.synchronized {
@@ -84,11 +84,11 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
           // TODO: disable this behavior -- all senders should already exist in the ledger
 
           val senderKey = tx.getSender.key
-          val sendCur = ledger.getOrElseUpdate(senderKey, 0d)
+          val sendCur = ledger.getOrElseUpdate(senderKey, 0)
           ledger(senderKey) = sendCur - tx.getAmount
 
           val recipKey = tx.getRecipient.key
-          val recipCur = ledger.getOrElseUpdate(recipKey, 0d)
+          val recipCur = ledger.getOrElseUpdate(recipKey, 0)
           ledger(recipKey) = recipCur + tx.getAmount
         }
       } } }

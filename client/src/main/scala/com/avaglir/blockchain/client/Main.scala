@@ -18,7 +18,7 @@ object Main extends LazyLogging {
       sys.exit(1)
     }
 
-    val amount = 1.2f
+    val amount = 1200
     val recipient = Array.fill[Byte](0)(0)
 
     val tClient = TransactionClient.apply

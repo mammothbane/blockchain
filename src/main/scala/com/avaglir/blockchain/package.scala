@@ -31,7 +31,7 @@ package object blockchain {
   val workFactor = 16  // number of leading zero bits for valid block
   val validMask: Long = -1L ^ ((1L << (64 - workFactor) + 1) - 1)  // top `workFactor` bits are 1, all else 0
 
-  val blockReward = 10d
+  val blockReward: Long = 1000*1000
 
   val zeroBlock: Block = Block.newBuilder
       .setNonce(0)

@@ -94,7 +94,7 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
           if (newBlocks.last.getBlockIndex > blockchain.last.getBlockIndex) {
             logger.warn("STOP THE WORLD -- acquiring better blockchain")
             pendingTransactions.synchronized { acceptedTransactions.synchronized {
-              node.blockchainStub.syncback()
+//              node.blockchainStub.syncback()
             } }
           }
         }
