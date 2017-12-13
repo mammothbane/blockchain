@@ -111,7 +111,7 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
           val txs = block.getTxnsList.asScala
           txs.foreach { tx =>
             val sig = tx.getSignature.key
-            pendingTransactions += sig -> tx
+            if (!tx.getBlockReward) pendingTransactions += sig -> tx
             acceptedTransactions -= sig
             ledger(tx.getSender.key) += tx.getAmount
             ledger(tx.getRecipient.key) -= tx.getAmount

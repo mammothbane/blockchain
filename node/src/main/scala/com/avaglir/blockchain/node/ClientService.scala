@@ -12,19 +12,21 @@ class ClientService(val snode: SNode) extends ClientGrpc.ClientImplBase with Laz
 
     val resp = TransactionResponse.newBuilder
 
-    tx.validate.fold[TransactionResponse](
-      err => {
-        logger.warn(s"received invalid transaction from client: $err")
-        resp.setData(ERR).build
-      },
-      _ => {
-        logger.debug(s"accepted transaction $tx")
-        pendingTransactions.synchronized {
-          pendingTransactions(tx.getSignature.key) = tx
-        }
+    tx.validate
+      .flatMap { _ => if (tx.getBlockReward) Left("client cannot submit tx with block reward") else Right() }
+      .fold[TransactionResponse](
+        err => {
+          logger.warn(s"received invalid transaction from client: $err")
+          resp.setData(ERR).build
+        },
+        _ => {
+          logger.debug(s"accepted transaction $tx")
+          pendingTransactions.synchronized {
+            pendingTransactions(tx.getSignature.key) = tx
+          }
 
-        resp.setData(OK).build
-      }
+          resp.setData(OK).build
+        }
     )
 
   }

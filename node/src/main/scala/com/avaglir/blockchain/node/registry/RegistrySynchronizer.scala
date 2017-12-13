@@ -13,7 +13,6 @@ import scala.concurrent.duration.Duration
 import scala.util.Success
 
 class RegistrySynchronizer(snode: SNode) extends BgService with LazyLogging {
-
   import snode._
 
   val heartbeatTimeoutSec = 1

@@ -17,7 +17,7 @@ message Block {
 message Transaction {
     bytes sender = 1;
     bytes recipient = 2;
-    double amount = 3;
+    uint64 amount = 3;
     uint64 timestamp = 4;
     uint64 nonce = 5;
     bool blockReward = 6;
@@ -55,7 +55,7 @@ message InitData {
 
     message LedgerEntry {
         bytes id = 1;
-        double amount = 2;
+        uint64 amount = 2;
     }
 
     repeated LedgerEntry ledger = 3;
