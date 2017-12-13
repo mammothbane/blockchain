@@ -1,10 +1,10 @@
 package com.avaglir.blockchain.node.blockchain
 
 import java.time
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 import com.avaglir.blockchain._
-import com.avaglir.blockchain.generated.{Block, Node, SyncRequest, Transaction}
+import com.avaglir.blockchain.generated._
 import com.avaglir.blockchain.node._
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.stub.StreamObserver
@@ -23,7 +23,7 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
 
   override def run(): Unit = {
     if (liveNodes.isEmpty) {
-      logger.warn("no live nodes for block sync")
+      if (initNodes.nonEmpty) logger.warn("no live nodes for block sync")
       return
     }
 
@@ -89,20 +89,93 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
       .filter { case (_, list) => list.nonEmpty }
 
     nonEmpty.headOption.foreach {
-      case (node, newBlocks) =>
-        blockchain.synchronized {
-          if (newBlocks.last.getBlockIndex > blockchain.last.getBlockIndex) {
-            logger.warn("STOP THE WORLD -- acquiring better blockchain")
-            pendingTransactions.synchronized { acceptedTransactions.synchronized {
-//              node.blockchainStub.syncback()
-            } }
-          }
-        }
+      case (node, newBlocks) => handleNew(node, newBlocks)
     }
-
 
     Await.ready(Future.sequence(exchanges), Duration(5, TimeUnit.SECONDS))
       .recover { case t => logger.error(s"tx exchange failed: ${t.getClass} :: ${t.getMessage} ") }
+  }
+
+  def handleNew(node: Node, newBlocks: List[Block]): Either[String, Unit] = {
+    blockchain.synchronized {
+      if (newBlocks.last.getBlockIndex <= blockchain.last.getBlockIndex) return Left("new blocks invalidated by blockchain progress")
+
+      if (blockchain.last.getBlockIndex >= newBlocks.head.getBlockIndex) { // we overlap to some degree
+        def newBlock(i: Long): Block = newBlocks((i - newBlocks.head.getBlockIndex).toInt)
+        def ourBlock(i: Long): Block = blockchain((i - blockchain.head.getBlockIndex).toInt)
+
+        (blockchain.last.getBlockIndex to newBlocks.head.getBlockIndex by -1).find { idx =>
+          newBlock(idx) == ourBlock(idx)
+        }.foreach { idx =>
+          return pendingTransactions.synchronized { acceptedTransactions.synchronized {
+            val popped = popBlocks(idx + 1)
+
+            val result = (idx + 1 to newBlocks.last.getBlockIndex)
+              .foldLeft[Either[String, Unit]](Right()) { (acc, blockIdx) => acc.flatMap { _ => pushBlock(newBlock(blockIdx)) }}
+
+            result.left.flatMap { err =>
+                logger.error(s"applying block: $err, reverting to old blockchain")
+
+                popBlocks(idx + 1)
+                popped
+                  .foldLeft[Either[String, Unit]](Right()) { (acc, block) => acc.flatMap { _ => pushBlock(block) } }
+            }
+          }}
+        }
+
+        doSyncback(node)
+
+      } else { // no overlap
+        if (newBlocks.head.getBlockIndex != blockchain.last.getBlockIndex + 1) return Left("new blocks index out of range")
+        if (newBlocks.head.getLastBlock != blockchain.last.getProof) return doSyncback(node)
+
+        val oldHeadBlock = blockchain.last.getBlockIndex
+
+        pendingTransactions.synchronized { acceptedTransactions.synchronized {
+
+          // new block follows our last block properly
+          val result = newBlocks
+            .foldLeft[Either[String, Unit]](Right()) { (acc, block) => acc.flatMap { _ => pushBlock(block) } }
+
+          result.left.foreach { err =>
+            logger.error(s"applying block: $err. reverting to old blockchain state.")
+            popBlocks(oldHeadBlock + 1)
+          }
+
+          result
+        }}
+      }
+    }
+  }
+
+  // pre: blockchain locked
+  private def doSyncback(node: Node): Either[String, Unit] = {
+    pendingTransactions.synchronized { acceptedTransactions.synchronized {
+      val latch = new CountDownLatch(1)
+
+      val obs = node.blockchainStub.syncback(new StreamObserver[Block] {
+        val acc: ListBuffer[Block] = mutable.ListBuffer.empty[Block]
+        var done = false
+
+        override def onNext(value: Block): Unit = {
+
+        }
+
+        override def onError(t: Throwable): Unit = {
+          latch.countDown()
+        }
+
+
+        override def onCompleted(): Unit = {
+        }
+      })
+
+      latch.await()
+      obs.onNext(SyncBackProgress.newBuilder.setData(SyncBackProgress.Data.FINISHED).build)
+      obs.onCompleted()
+
+      Right()
+    } }
   }
 
 }
