@@ -28,8 +28,8 @@ package object blockchain {
   val defaultPort = 9148
   val maxTxPerBlock = 10
 
-  val workFactor = 10  // number of leading zero bits
-  val validMask: Long = -1L ^ ((1L << workFactor + 1) - 1)  // top `workFactor` bits are 1, all else 0
+  val workFactor = 16  // number of leading zero bits for valid block
+  val validMask: Long = -1L ^ ((1L << (64 - workFactor) + 1) - 1)  // top `workFactor` bits are 1, all else 0
 
   val blockReward = 10d
 
@@ -47,8 +47,19 @@ package object blockchain {
     inst.getEpochSecond * 1000L + inst.getNano.toLong / 1000000L
   }
 
+  case class ByteArrayKey(b: Array[Byte]) {
+    override def equals(obj: scala.Any): Boolean = obj.isInstanceOf[ByteArrayKey] && util.Arrays.equals(obj.asInstanceOf[ByteArrayKey].b, b)
+    override def hashCode(): Int = util.Arrays.hashCode(b)
+    override def toString: String = b.hexString
+  }
+
   implicit def byteString2Ary(b: ByteString): Array[Byte] = b.toByteArray
   implicit def ary2ByteString(b: Array[Byte]): ByteString = ByteString.copyFrom(b)
+  implicit def key2ByteAry(b: ByteArrayKey): Array[Byte] = b.b
+
+  implicit class byteStringExt(b: ByteString) {
+    def key: ByteArrayKey = ByteArrayKey(b.toByteArray)
+  }
 
   implicit class txnSig(t: TransactionOrBuilder) {
     private def preSignedHash: Array[Byte] = {
@@ -125,6 +136,7 @@ package object blockchain {
   implicit class byteArrayHexString(b: Array[Byte]) {
     def hexString: String = b.map { _.hexString }.mkString
     override def toString: String = hexString
+    def key = ByteArrayKey(b)
   }
 
   // borrowed from https://stackoverflow.com/questions/18026601/listenablefuture-to-scala-future

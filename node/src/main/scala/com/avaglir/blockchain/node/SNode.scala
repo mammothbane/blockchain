@@ -8,6 +8,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 
 import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated._
+import com.avaglir.blockchain.node.blockchain.{BlockMiner, BlockSynchronizer, BlockchainService}
 import com.avaglir.blockchain.node.registry.{RegistryService, RegistrySynchronizer}
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.{Server, ServerBuilder}
@@ -54,11 +55,11 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
 
   val liveNodes = mutable.HashMap.empty[Int, Node]
 
-  val pendingTransactions = mutable.Map.empty[Array[Byte], Transaction]
-  val acceptedTransactions = mutable.Set.empty[Array[Byte]]
+  val pendingTransactions = mutable.Map.empty[ByteArrayKey, Transaction]
+  val acceptedTransactions = mutable.Set.empty[ByteArrayKey]
 
   val blockchain: ListBuffer[Block] = mutable.ListBuffer.empty[Block]
-  val ledger = mutable.Map.empty[Array[Byte], Double]
+  val ledger = mutable.Map.empty[ByteArrayKey, Double]
 
   def pushBlock(b: Block): Either[String, Unit] = {
     blockchain.synchronized {
@@ -70,9 +71,7 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
       if (last.getProof != b.getLastBlock) return Left("block proof mismatch")
 
       val txs = b.getTxnsList.asScala
-      if (txs.count { _.getBlockReward } != 1) return Left("bad block reward format")
-
-      val txSigs = txs.map { _.getSignature.toByteArray }.toSet
+      val txSigs = txs.map { _.getSignature.key }.toSet
 
       pendingTransactions.synchronized { acceptedTransactions.synchronized { ledger.synchronized {
         if ((txSigs intersect acceptedTransactions).nonEmpty) return Left("some transactions already accepted")
@@ -82,10 +81,15 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
         blockchain += b
 
         txs.foreach { tx =>
-          ledger(tx.getSender) -= tx.getAmount
+          // TODO: disable this behavior -- all senders should already exist in the ledger
 
-          val cur = ledger.getOrElseUpdate(tx.getRecipient, 0d)
-          ledger(tx.getRecipient) = cur + tx.getAmount
+          val senderKey = tx.getSender.key
+          val sendCur = ledger.getOrElseUpdate(senderKey, 0d)
+          ledger(senderKey) = sendCur - tx.getAmount
+
+          val recipKey = tx.getRecipient.key
+          val recipCur = ledger.getOrElseUpdate(recipKey, 0d)
+          ledger(recipKey) = recipCur + tx.getAmount
         }
       } } }
 
@@ -106,11 +110,11 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
         remove.foreach { block =>
           val txs = block.getTxnsList.asScala
           txs.foreach { tx =>
-            val sig = tx.getSignature.toByteArray
+            val sig = tx.getSignature.key
             pendingTransactions += sig -> tx
             acceptedTransactions -= sig
-            ledger(tx.getSender.toByteArray) += tx.getAmount
-            ledger(tx.getRecipient.toByteArray) -= tx.getAmount
+            ledger(tx.getSender.key) += tx.getAmount
+            ledger(tx.getRecipient.key) -= tx.getAmount
           }
         }
       }}}
@@ -146,9 +150,9 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
             case Left(_) =>
               try {
                 val initInfo = node.blockchainBlockingStub.retriveInitData(UnitMessage.getDefaultInstance)
-                acceptedTransactions ++= initInfo.getAcceptedTransactionsList.asScala.map { _.toByteArray }
+                acceptedTransactions ++= initInfo.getAcceptedTransactionsList.asScala.map { _.key }
                 blockchain += initInfo.getLastBlock
-                ledger ++= initInfo.getLedgerList.asScala.map { x => x.getId.toByteArray -> x.getAmount }
+                ledger ++= initInfo.getLedgerList.asScala.map { x => x.getId.key -> x.getAmount }
 
                 logger.info(s"success: init info $initInfo acquired from ${node.pretty}")
 

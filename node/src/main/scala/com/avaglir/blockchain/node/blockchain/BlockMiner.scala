@@ -1,9 +1,11 @@
-package com.avaglir.blockchain.node
+package com.avaglir.blockchain.node.blockchain
 
+import java.nio.ByteBuffer
 import java.time.Duration
 
 import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated.Block
+import com.avaglir.blockchain.node.{BgService, SNode}
 import com.typesafe.scalalogging.LazyLogging
 
 import scala.collection.JavaConverters._
@@ -40,9 +42,13 @@ class BlockMiner(snode: SNode) extends BgService with LazyLogging {
         .setLastBlock(blockchain.last.getProof)
 
       bld.setProof(bld.calcProof)
+      logger.trace({
+        val hex = ByteBuffer.allocate(8).putLong(bld.getProof).array().hexString
+        s"trying proof $hex"
+      })
 
       bld.validate.fold(
-        err => logger.warn(s"block failed to validate: $err"),
+        err => logger.trace(s"block failed to validate: $err"),
         _ => pushBlock(bld.build).fold(
           err => logger.warn(s"adding block failed with $err"),
           _ => logger.info(s"successfully mined block ${bld.getBlockIndex}")
@@ -51,6 +57,6 @@ class BlockMiner(snode: SNode) extends BgService with LazyLogging {
 
       nonce += 1
     }
-    logger.debug("done mining (no transactions to process)")
+    logger.trace("done mining (no transactions to process)")
   }
 }

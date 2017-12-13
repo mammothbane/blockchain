@@ -1,10 +1,11 @@
-package com.avaglir.blockchain.node
+package com.avaglir.blockchain.node.blockchain
 
 import java.lang.{Long => JLong}
 
 import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated.InitData.LedgerEntry
 import com.avaglir.blockchain.generated._
+import com.avaglir.blockchain.node.SNode
 import com.google.protobuf.ByteString
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.stub.StreamObserver
@@ -21,8 +22,8 @@ class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase 
     val data = blockchain.synchronized { acceptedTransactions.synchronized { ledger.synchronized {
       InitData.newBuilder
         .setLastBlock(blockchain.last)
-        .addAllAcceptedTransactions(acceptedTransactions.map { ByteString.copyFrom }.asJava)
-        .addAllLedger(ledger.map { case (id, amt) => LedgerEntry.newBuilder.setId(id).setAmount(amt).build }.asJava)
+        .addAllAcceptedTransactions(acceptedTransactions.map { elt => ByteString.copyFrom(elt.b) }.asJava)
+        .addAllLedger(ledger.map { case (id, amt) => LedgerEntry.newBuilder.setId(id.b).setAmount(amt).build }.asJava)
         .build
     } } }
 
@@ -61,8 +62,8 @@ class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase 
       override def onCompleted(): Unit = {
         pendingTransactions.synchronized { acceptedTransactions.synchronized {
           pendingTransactions ++= acc
-            .withFilter { elt => !acceptedTransactions.contains(elt.getSignature) && elt.validate.isRight }
-            .map { tx => tx.getSignature.toByteArray -> tx }
+            .withFilter { elt => !acceptedTransactions.contains(elt.getSignature.key) && elt.validate.isRight }
+            .map { tx => tx.getSignature.key -> tx }
         } }
 
         responseObserver.onCompleted()
