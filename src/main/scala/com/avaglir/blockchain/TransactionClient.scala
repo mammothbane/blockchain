@@ -5,16 +5,15 @@ import java.security.spec.X509EncodedKeySpec
 import java.security.{KeyFactory, KeyPair, KeyPairGenerator, SecureRandom}
 
 import com.avaglir.blockchain.generated.Transaction
-import com.google.protobuf.ByteString
 import com.typesafe.scalalogging.LazyLogging
 
 import scala.io.Source
 
-case class TransactionClient(kp: KeyPair) {
+case class TransactionClient(keyPair: KeyPair) {
   import TransactionClient._
 
-  val publicKey: Array[Byte] = kp.getPublic.getEncoded
-  val privateKey: Array[Byte] = kp.getPrivate.getEncoded
+  val publicKey: Array[Byte] = keyPair.getPublic.getEncoded
+  val privateKey: Array[Byte] = keyPair.getPrivate.getEncoded
 
   val random = new SecureRandom()
 
@@ -22,14 +21,14 @@ case class TransactionClient(kp: KeyPair) {
 
   lazy val json: String = org.json4s.native.Serialization.write(serRepr)
 
-  def transaction(recipient: Array[Byte], amount: Double, isBlockReward: Boolean = false): Transaction = Transaction.newBuilder()
+  def transaction(recipient: Array[Byte], amount: Double, isBlockReward: Boolean = false): Transaction = Transaction.newBuilder
     .setAmount(if (!isBlockReward) amount else blockReward)
-    .setSender(ByteString.copyFrom(publicKey))
-    .setRecipient(ByteString.copyFrom(recipient))
+    .setSender(publicKey)
+    .setRecipient(recipient)
     .setNonce(random.nextLong)
     .setTimestamp(nowEpochMillis)
     .setBlockReward(isBlockReward)
-    .sign(kp.getPrivate)
+    .sign(keyPair.getPrivate)
     .build()
 }
 

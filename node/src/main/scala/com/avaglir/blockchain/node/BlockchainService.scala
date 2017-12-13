@@ -61,7 +61,7 @@ class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase 
       override def onCompleted(): Unit = {
         pendingTransactions.synchronized { acceptedTransactions.synchronized {
           pendingTransactions ++= acc
-            .withFilter { elt => !acceptedTransactions.contains(elt.getSignature.toByteArray) && elt.validate.isRight }
+            .withFilter { elt => !acceptedTransactions.contains(elt.getSignature) && elt.validate.isRight }
             .map { tx => tx.getSignature.toByteArray -> tx }
         } }
 

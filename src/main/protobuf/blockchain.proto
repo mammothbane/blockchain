@@ -54,7 +54,7 @@ message InitData {
     repeated bytes acceptedTransactions = 2;
 
     message LedgerEntry {
-        fixed64 id = 1;
+        bytes id = 1;
         double amount = 2;
     }
 

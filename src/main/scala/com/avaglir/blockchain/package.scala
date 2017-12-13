@@ -47,15 +47,23 @@ package object blockchain {
     inst.getEpochSecond * 1000L + inst.getNano.toLong / 1000000L
   }
 
+  implicit def byteString2Ary(b: ByteString): Array[Byte] = b.toByteArray
+  implicit def ary2ByteString(b: Array[Byte]): ByteString = ByteString.copyFrom(b)
+
   implicit class txnSig(t: TransactionOrBuilder) {
     private def preSignedHash: Array[Byte] = {
-      val ret = ByteBuffer.allocate(8 + t.getSender.size() + t.getRecipient.size() + 8 + 8 + 1)
+      val recip = t.getRecipient
+      val sender = t.getSender
+
+      val ret = ByteBuffer.allocate(8 + sender.size + recip.size + 8 + 8 + 1)
+
+      ret
         .putDouble(t.getAmount)
-        .put(t.getSender.toByteArray)
-        .put(t.getRecipient.toByteArray)
+        .put(sender)
+        .put(recip)
         .putLong(t.getNonce)
         .putLong(t.getTimestamp)
-        .putChar(if (t.getBlockReward) 1 else 0)
+        .put(if (t.getBlockReward) 1.toByte else 0.toByte)
 
       val digest = MessageDigest.getInstance("SHA-256")
       digest.digest(ret.array)
@@ -63,7 +71,7 @@ package object blockchain {
 
     def signature(privateKey: PrivateKey): Array[Byte] = {
       require({
-        val rsaPub = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(t.getSender.toByteArray)).asInstanceOf[RSAPublicKey]
+        val rsaPub = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(t.getSender)).asInstanceOf[RSAPublicKey]
         val rsaPriv = privateKey.asInstanceOf[RSAPrivateKey]
 
         // this check borrowed from https://stackoverflow.com/questions/24121801/how-to-verify-if-the-private-key-matches-with-the-certificate
@@ -90,10 +98,10 @@ package object blockchain {
       }
 
       val cipher = Cipher.getInstance("RSA")
-      val publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(t.getSender.toByteArray))
+      val publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(t.getSender))
       cipher.init(Cipher.DECRYPT_MODE, publicKey)
 
-      val decryptedHash = cipher.doFinal(t.getSignature.toByteArray)
+      val decryptedHash = cipher.doFinal(t.getSignature)
       val recalcHash = preSignedHash
 
       if (util.Arrays.equals(decryptedHash, recalcHash)) Right()
@@ -188,7 +196,7 @@ package object blockchain {
       buf.putLong(b.getLastBlock)
       buf.putLong(b.getNonce)
       buf.putLong(b.getTimestamp)
-      txs.foreach { tx => buf.put(tx.getSignature.toByteArray) }
+      txs.foreach { tx => buf.put(tx.getSignature) }
 
       val digest = MessageDigest.getInstance("SHA-256")
       val result = digest.digest(buf.array())
