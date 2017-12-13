@@ -241,7 +241,7 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
     }
 
     val httpServer = BlazeBuilder
-      .bindHttp(config.port + 1000)
+      .bindHttp(config.port + 1000, config.bind.getHostAddress)
       .mountService(svc, "/")
       .run
 
