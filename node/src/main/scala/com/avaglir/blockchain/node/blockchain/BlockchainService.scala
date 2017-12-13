@@ -71,19 +71,13 @@ class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase 
     }
   }
 
-  override def syncback(responseObserver: StreamObserver[Block]): StreamObserver[SyncBackProgress] = new StreamObserver[SyncBackProgress] {
-    var curIdx: Int = blockchain.length - 1
+  override def getBlock(request: BlockRequest, responseObserver: StreamObserver[Block]): Unit = blockchain.synchronized {
+      val targetBlock = request.getBlockIndex - blockchain.head.getBlockIndex
 
-    override def onNext(value: SyncBackProgress): Unit = value.getData match {
-      case SyncBackProgress.Data.CONTINUE if curIdx <= 0 => responseObserver.onCompleted()
-      case SyncBackProgress.Data.FINISHED => responseObserver.onCompleted()
-
-      case SyncBackProgress.Data.CONTINUE =>
-        responseObserver.onNext(blockchain(curIdx))
-        curIdx -= 1
+      if (targetBlock > blockchain.last.getBlockIndex) responseObserver.onError(new IllegalArgumentException("block out of range"))
+      else {
+        responseObserver.onNext(blockchain(targetBlock.toInt))
+        responseObserver.onCompleted()
+      }
     }
-
-    override def onError(t: Throwable): Unit = logger.error(s"syncback: $t")
-    override def onCompleted(): Unit = {}
-  }
 }

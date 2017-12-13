@@ -1,7 +1,7 @@
 package com.avaglir.blockchain.node.blockchain
 
 import java.time
-import java.util.concurrent.{CountDownLatch, TimeUnit}
+import java.util.concurrent.TimeUnit
 
 import com.avaglir.blockchain._
 import com.avaglir.blockchain.generated._
@@ -9,6 +9,7 @@ import com.avaglir.blockchain.node._
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.stub.StreamObserver
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent._
@@ -74,26 +75,29 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
       })
 
       p.future.recover { case e =>
-        logger.warn(s"failed to sync with ${node.pretty}: $e")
+        logger.warn(s"failed to sync with ${node.pretty}: ${e.getMessage}")
         node -> List()
       }
     }.seq
 
-    val all = Await.ready(Future.sequence(blocks), Duration(5, TimeUnit.SECONDS))
-      .recover { case t =>
+    val nonEmpty = try {
+      Await.result(Future.sequence(blocks), Duration(5, TimeUnit.SECONDS))
+        .filter { case (_, list) => list.nonEmpty }
+    } catch {
+      case t: TimeoutException =>
         logger.error(s"awaiting sync failed: ${t.getClass} :: ${t.getMessage}")
         List.empty
-      }
-
-    val nonEmpty = Await.result(all, Duration(-1, TimeUnit.MILLISECONDS))
-      .filter { case (_, list) => list.nonEmpty }
+    }
 
     nonEmpty.headOption.foreach {
       case (node, newBlocks) => handleNew(node, newBlocks)
     }
 
-    Await.ready(Future.sequence(exchanges), Duration(5, TimeUnit.SECONDS))
-      .recover { case t => logger.error(s"tx exchange failed: ${t.getClass} :: ${t.getMessage} ") }
+    try {
+      Await.ready(Future.sequence(exchanges), Duration(5, TimeUnit.SECONDS))
+    } catch {
+      case t: TimeoutException => logger.error(s"tx exchange failed: ${t.getClass} :: ${t.getMessage} ")
+    }
   }
 
   def handleNew(node: Node, newBlocks: List[Block]): Either[String, Unit] = {
@@ -151,30 +155,48 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
   // pre: blockchain locked
   private def doSyncback(node: Node): Either[String, Unit] = {
     pendingTransactions.synchronized { acceptedTransactions.synchronized {
-      val latch = new CountDownLatch(1)
+      val stub = node.blockchainBlockingStub
+      val bld = BlockRequest.newBuilder
 
-      val obs = node.blockchainStub.syncback(new StreamObserver[Block] {
-        val acc: ListBuffer[Block] = mutable.ListBuffer.empty[Block]
-        var done = false
+      val acc = mutable.ListBuffer.empty[Block]
+      var idx = blockchain.last.getBlockIndex
 
-        override def onNext(value: Block): Unit = {
+      while (idx > blockchain.head.getBlockIndex) {
+        val block = stub.getBlock(bld.setBlockIndex(idx).build)
+        if (block == blockchain((idx - blockchain.head.getBlockIndex).toInt)) {
+          val oldBlocks = popBlocks(idx + 1)
+          val result = acc.reverseIterator.foldLeft[Either[String, Unit]](Right()) { (acc, block) => acc.flatMap { _ => pushBlock(block) } }
 
+          result.left.foreach { _ =>
+            popBlocks(idx + 1)
+            oldBlocks.foldLeft[Either[String, Unit]](Right()) { (acc, block) => acc.flatMap { _ => pushBlock(block) }}
+              .left.foreach { err => logger.error(s"restoring from failed syncback: $err") }
+          }
+
+          return result
         }
+        idx -= 1
+      }
 
-        override def onError(t: Throwable): Unit = {
-          latch.countDown()
-        }
+      assert(idx == blockchain.head.getBlockIndex)
 
 
-        override def onCompleted(): Unit = {
-        }
-      })
+      val initInfo = stub.retriveInitData(UnitMessage.getDefaultInstance)
 
-      latch.await()
-      obs.onNext(SyncBackProgress.newBuilder.setData(SyncBackProgress.Data.FINISHED).build)
-      obs.onCompleted()
+      logger.warn(s"divergence at initial block during sync with ${node.pretty}. resetting all blockchain data.")
+      popBlocks(idx)
 
-      Right()
+      acceptedTransactions.clear()
+      initInfo.getAcceptedTransactionsList.asScala.foreach { elt => acceptedTransactions.add(elt.key) }
+
+      ledger.synchronized {
+        ledger.clear()
+        initInfo.getLedgerList.asScala.foreach { entry => ledger(entry.getId.key) = entry.getAmount }
+      }
+
+      blockchain += initInfo.getLastBlock
+
+      acc.reverseIterator.foldLeft[Either[String, Unit]](Right()) { (acc, block) => acc.flatMap { _ => pushBlock(block) } }
     } }
   }
 

@@ -21,9 +21,9 @@ class ClientService(val snode: SNode) extends ClientGrpc.ClientImplBase with Laz
         },
         _ => {
           logger.debug(s"accepted transaction $tx")
-          pendingTransactions.synchronized {
-            pendingTransactions(tx.getSignature.key) = tx
-          }
+          pendingTransactions.synchronized { acceptedTransactions.synchronized {
+            if (!acceptedTransactions.contains(tx.getSignature.key)) pendingTransactions(tx.getSignature.key) = tx
+          }}
 
           resp.setData(OK).build
         }
