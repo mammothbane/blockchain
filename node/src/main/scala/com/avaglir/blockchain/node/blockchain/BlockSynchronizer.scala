@@ -15,6 +15,9 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent._
 import scala.concurrent.duration.Duration
 
+/**
+  * Synchronize our blockchain with the other nodes we know about.
+  */
 class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
   import snode._
 
@@ -30,6 +33,7 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
 
     logger.debug(s"-> exch (${liveNodes.size} target(s))")
 
+    // synchronize pending transactions
     val exchanges = liveNodes.values.par.map { node =>
       val p = Promise[Unit]
 
@@ -55,6 +59,9 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
     }.seq
 
     val fromBlockIdx = blockchain.last.getBlockIndex
+
+    // sync blocks. ask all known nodes for changes since our last block, select a random one with a non-empty result
+    // if it exists, and tattempt to unify with our blockchain.
     val blocks = liveNodes.values.par.map { node =>
       val p = Promise[(Node, List[Block])]
 
@@ -100,6 +107,12 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
     }
   }
 
+  /**
+    * Attempt to unify our blockchain with the new (better) blockchain.
+    * @param node Node blocks were received from.
+    * @param newBlocks New blocks.
+    * @return Result-style ([[scala.Left]] -> failure, [[scala.Right]] -> success).
+    */
   def handleNew(node: Node, newBlocks: List[Block]): Either[String, Unit] = {
     blockchain.synchronized {
       if (newBlocks.last.getBlockIndex <= blockchain.last.getBlockIndex) return Left("new blocks invalidated by blockchain progress")
@@ -152,6 +165,12 @@ class BlockSynchronizer(snode: SNode) extends BgService with LazyLogging {
     }
   }
 
+  /**
+    * Run when another node is known to have a longer blockchain than ours with an unknown discrepancy.
+    * @param node The node to execute syncback with.
+    * @return Result-style ([[scala.Left]] -> failure, [[scala.Right]] -> success).
+    * @note Precondition: blockchain locked.
+    */
   // pre: blockchain locked
   private def doSyncback(node: Node): Either[String, Unit] = {
     pendingTransactions.synchronized { acceptedTransactions.synchronized {

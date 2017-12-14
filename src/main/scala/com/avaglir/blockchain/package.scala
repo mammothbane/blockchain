@@ -23,6 +23,9 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import scala.concurrent.{Future, Promise}
 
+/**
+  * A whole lot of utilities and constants.
+  */
 package object blockchain {
   val keylen = 512
   val defaultPort = 9148

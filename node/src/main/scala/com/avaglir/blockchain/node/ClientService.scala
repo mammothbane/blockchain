@@ -5,6 +5,10 @@ import com.avaglir.blockchain.generated.{ClientGrpc, Transaction, TransactionRes
 import com.typesafe.scalalogging.LazyLogging
 import io.grpc.stub.StreamObserver
 
+/**
+  * Respond to client transaction requests.
+  * @param snode The [[com.avaglir.blockchain.node.SNode]] to bind to.
+  */
 class ClientService(val snode: SNode) extends ClientGrpc.ClientImplBase with LazyLogging {
   def submitImpl(tx: Transaction): TransactionResponse = {
     import TransactionResponse.Data._

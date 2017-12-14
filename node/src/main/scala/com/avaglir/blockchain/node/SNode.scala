@@ -4,7 +4,6 @@ import java.lang.{Long => JLong}
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.security.MessageDigest
-import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.avaglir.blockchain._
@@ -21,6 +20,10 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent._
 import scala.util.Random
 
+/**
+  * Controller for a node. Somewhat of a god-class.
+  * @param config Configuration object, usually loaded from command-line.
+  */
 class SNode(val config: Config) extends Runnable with LazyLogging {
   val registrySynchronizer = new RegistrySynchronizer(this)
   val blockSynchronizer = new BlockSynchronizer(this)
@@ -30,9 +33,15 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
   val registryService = new RegistryService(this)
   val clientService = new ClientService(this)
 
+  /**
+    * Services running on this node.
+    */
   val services: List[BgService] =
     List(registrySynchronizer, blockSynchronizer) ++ blockMiner
 
+  /**
+    * gRPC server running on this node.
+    */
   val sv: Server = {
     val builder = ServerBuilder.forPort(config.port)
 
@@ -43,6 +52,11 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
     builder.build()
   }
 
+  /**
+    * Initial nodeset -- never altered and fallen back upon if there are no live nodes.
+    * Maps from node hash to [[com.avaglir.blockchain.generated.Node]].
+    * @see [[com.avaglir.blockchain.node.SNode.liveNodes]]
+    */
   val initNodes: Map[Int, Node] = config.nodeSet.par.map { node =>
     val out = Node.newBuilder
     out.setPort(node.getPort)
@@ -55,14 +69,41 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
     ret.hash -> ret
   }.seq.toMap
 
+  /**
+    * The set of "live" nodes -- those that have responded recently to a registry exchange request.
+    * @see [[com.avaglir.blockchain.node.SNode.initNodes]]
+    */
   val liveNodes = mutable.HashMap.empty[Int, Node]
 
+  /**
+    * Transactions pending acceptance into the blockchain.
+    */
   val pendingTransactions = mutable.Map.empty[ByteArrayKey, Transaction]
+
+  /**
+    * All transactions already accepted into the blockchain. This does not scale very well.
+    */
   val acceptedTransactions = mutable.Set.empty[ByteArrayKey]
 
+  /**
+    * The blockchain itself. Just a list of blocks.
+    * Invariants:
+    *   - the length of the blockchain never decreases (when access is synchronized)
+    *   - node indexes increase by 1 starting at the index of the first block in the chain
+    */
   val blockchain: ListBuffer[Block] = mutable.ListBuffer.empty[Block]
+
+  /**
+    * Tracks the balances of all known addresses.
+    * @note This is not at all how Bitcoin does it.
+    */
   val ledger = mutable.Map.empty[ByteArrayKey, Long]
 
+  /**
+    * Try to push a block onto the chain.
+    * @param b A block to push onto the end of the chain.
+    * @return Interpret [[scala.Left]] as a failure (with error message), [[scala.Right]] as a success.
+    */
   def pushBlock(b: Block): Either[String, Unit] = {
     blockchain.synchronized {
       b.validate.left.foreach { x => return Left(s"block failed to validate: $x") }
@@ -98,6 +139,11 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
     Right()
   }
 
+  /**
+    * Pop blocks off the end of the chain.
+    * @param toIdx The index of the block to halt at (inclusive).
+    * @return All the blocks that were removed from the chain.
+    */
   def popBlocks(toIdx: Long): List[Block] = {
     blockchain.synchronized {
       val remove = blockchain.reverseIterator
@@ -125,7 +171,10 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
     }
   }
 
-  val startEpochMillis: Long = Instant.now.toEpochMilli
+  /**
+    * When this node started running.
+    */
+  val startEpochMillis: Long = nowEpochMillis
 
   val selfNode: Node = {
     val info = Node.NodeInfo.newBuilder
@@ -141,6 +190,7 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
   private implicit val execContext: ExecutionContextExecutor = ExecutionContext.global
 
   override def run(): Unit = {
+    // fastStart tries to acquire the most recent block from any other reachable node. not well-tested.
     if (!config.fastStart) blockchain += zeroBlock
     else {
       while (blockchain.isEmpty) {
@@ -197,6 +247,8 @@ class SNode(val config: Config) extends Runnable with LazyLogging {
       md.digest(ary).hexString
     }
 
+    // A bit gross not to factor this out, but this is our status server, which reports the status of the blockchain and
+    // ledger in a user-legible way.
     val svc = HttpService {
       case GET -> Root => Ok(html(
         head(

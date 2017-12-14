@@ -18,18 +18,20 @@ class BlockMiner(snode: SNode) extends BgService with LazyLogging {
   var nonce: Long = 0
 
   val txClient: TransactionClient = {
-    import config.clientFile
-    if (clientFile.exists) {
+    if (config.clientFile.exists) {
       TransactionClient(config.clientFile)
     } else {
       TransactionClient.apply
     }
   }
 
+  /**
+    * Mine blocks until the queue is empty.
+    *
+    * This is executed optimistically: blocks are mined without locking and the queue push is tried blindly. If it
+    * fails, we just keep mining with whatever transactions are left.
+    */
   override def run(): Unit = {
-    // optimistic approach here: don't bother locking on pendingTransactions or blockchain
-    // just allow the block to be rejected if it's invalid
-
     while (pendingTransactions.nonEmpty) {
       val selfTx = txClient.transaction(txClient.publicKey, blockReward, isBlockReward = true)
       val txs = pendingTransactions.take(9).values.toList :+ selfTx

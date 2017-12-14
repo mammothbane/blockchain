@@ -10,6 +10,9 @@ import io.grpc.stub.StreamObserver
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Promise}
 
+/**
+  * Client that submits simple transactions to the nodes. Also reports other nodes known to the node contacted.
+  */
 object Main extends LazyLogging {
   def main(args: Array[String]): Unit = {
     configLogger()

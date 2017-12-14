@@ -10,6 +10,10 @@ import io.grpc.stub.StreamObserver
 
 import scala.concurrent.blocking
 
+/**
+  * Serve registry synchronization requests.
+  * @param snode The [[com.avaglir.blockchain.node.SNode]] to bind to.
+  */
 class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with LazyLogging {
   import snode._
 

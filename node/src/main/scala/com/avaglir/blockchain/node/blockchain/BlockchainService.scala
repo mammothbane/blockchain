@@ -13,9 +13,16 @@ import io.grpc.stub.StreamObserver
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
+/**
+  * Serve blockchain-related requests to remote clients.
+  * @param snode The [[com.avaglir.blockchain.node.SNode]] to bind to.
+  */
 class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase with LazyLogging {
   import snode._
 
+  /**
+    * Return information required to initialize another node.
+    */
   override def retriveInitData(request: UnitMessage, responseObserver: StreamObserver[InitData]): Unit = {
     assert(blockchain.nonEmpty)
 
@@ -31,6 +38,9 @@ class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase 
     responseObserver.onCompleted()
   }
 
+  /**
+    * Handle a sync request from another node, listing all blocks since the requested one.
+    */
   override def sync(request: SyncRequest, responseObserver: StreamObserver[Block]): Unit = {
     assert(blockchain.nonEmpty)
 
@@ -50,6 +60,9 @@ class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase 
     responseObserver.onCompleted()
   }
 
+  /**
+    * Exchange all pending transactions with another node, allowing each to attempt to mine the transactions.
+    */
   override def exchangePendingTxns(responseObserver: StreamObserver[Transaction]): StreamObserver[Transaction] = {
     pendingTransactions.synchronized {
       pendingTransactions.values.foreach { responseObserver.onNext }
@@ -71,13 +84,16 @@ class BlockchainService(snode: SNode) extends BlockchainGrpc.BlockchainImplBase 
     }
   }
 
+  /**
+    * Return a specific block by index. Intended for use in syncback strategies.
+   */
   override def getBlock(request: BlockRequest, responseObserver: StreamObserver[Block]): Unit = blockchain.synchronized {
-      val targetBlock = request.getBlockIndex - blockchain.head.getBlockIndex
+    val targetBlock = request.getBlockIndex - blockchain.head.getBlockIndex
 
-      if (targetBlock > blockchain.last.getBlockIndex) responseObserver.onError(new IllegalArgumentException("block out of range"))
-      else {
-        responseObserver.onNext(blockchain(targetBlock.toInt))
-        responseObserver.onCompleted()
-      }
+    if (targetBlock > blockchain.last.getBlockIndex) responseObserver.onError(new IllegalArgumentException("block out of range"))
+    else {
+      responseObserver.onNext(blockchain(targetBlock.toInt))
+      responseObserver.onCompleted()
     }
+  }
 }

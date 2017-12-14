@@ -9,6 +9,9 @@ import com.typesafe.scalalogging.LazyLogging
 
 import scala.io.Source
 
+/**
+  * Utility that represents a client identity and allows constructing transactions from it to other addresses.
+  */
 case class TransactionClient(keyPair: KeyPair) {
   import TransactionClient._
 

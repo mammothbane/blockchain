@@ -12,6 +12,9 @@ import scala.concurrent._
 import scala.concurrent.duration.Duration
 import scala.util.Success
 
+/**
+  * Run registry sync.
+  */
 class RegistrySynchronizer(snode: SNode) extends BgService with LazyLogging {
   import snode._
 
@@ -30,6 +33,7 @@ class RegistrySynchronizer(snode: SNode) extends BgService with LazyLogging {
 
     logger.debug(s"-> exch (${contactNodes.size} target(s))")
 
+    // try to run exchanges with all remotes
     val exchanges = contactNodes.values.par.map { node =>
       val p = Promise[Unit]()
 

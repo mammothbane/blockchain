@@ -5,6 +5,9 @@ import java.util.concurrent.{Executors, TimeUnit}
 
 import com.avaglir.blockchain._
 
+/**
+  * Starts everything, but the node functionality is in [[com.avaglir.blockchain.node.SNode]].
+  */
 object Main {
   def main(args: Array[String]): Unit = {
     configLogger()
@@ -27,14 +30,14 @@ object Main {
 
     def nodeAddr(i: Int) = new URL(s"http://${config.bind.getHostAddress}:${config.port + i}")
 
-    val nodeSet = nodeNames.indices.map { nodeAddr }.toSet
+    val nodeSet = (0 until config.nodeCount).map { nodeAddr }.toSet
 
-    val nodes = nodeNames.zipWithIndex.map { case (name, idx) =>
-      val relevantSet = nodeSet - nodeAddr(idx)
+    val nodes = nodeSet.zipWithIndex.map { case (url, idx) =>
+      val relevantSet = nodeSet - url
 
       val conf = config.copy(
         port = config.port + idx,
-        name = name,
+        name = nodeNames(idx % nodeNames.size),
         nodeSet = config.nodeSet ++ relevantSet,
         _clientFile = None
       )
