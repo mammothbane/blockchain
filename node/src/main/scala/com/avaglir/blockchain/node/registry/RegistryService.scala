@@ -17,13 +17,6 @@ import scala.concurrent.blocking
 class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with LazyLogging {
   import snode._
 
-  val leaveImpl: (Node) => UnitMessage = (node: Node) => {
-    logger.info(s"<- leave (${node.pretty})")
-    blocking { liveNodes.synchronized { liveNodes -= node.hash } }
-
-    UnitMessage.getDefaultInstance
-  }
-
   def exchangeObserver(completeFunction: () => Unit = () => {},
                        errFunction: (Throwable) => Unit = (_: Throwable) => {}): StreamObserver[Node] =
     new StreamObserver[Node] {
@@ -50,6 +43,4 @@ class RegistryService(snode: SNode) extends RegistryGrpc.RegistryImplBase with L
 
     exchangeObserver(responseObserver.onCompleted, t => logger.error(s"$t"))
   }
-
-  override def leave(request: Node, responseObserver: StreamObserver[UnitMessage]): Unit = leaveImpl.asJava(request, responseObserver)
 }

@@ -81,5 +81,4 @@ message Node {
 
 service Registry {
     rpc Exchange    (stream Node)   returns (stream Node);
-    rpc Leave       (Node)          returns (UnitMessage);
 }
